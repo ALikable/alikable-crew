@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Alikable Agent Flow</title>
+<style>
+  body { margin: 0; background: #fff; font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
+  .wrap { max-width: 1300px; margin: 0 auto; padding: 24px 16px; }
+  svg { width: 100%; height: auto; display: block; }
+  .h1 { font-size: 21px; font-weight: 600; fill: #111; }
+  .band { fill: #F4F6FA; stroke: #C9D3E3; stroke-width: 1.2; }
+  .chat { fill: #E3EDF9; stroke: #2F6FD6; stroke-width: 1.6; }
+  .crew { fill: #ECECEA; stroke: #D3D3CF; stroke-width: 1.2; }
+  .agent { fill: #EFEFED; stroke: #C6C6C1; stroke-width: 1.2; }
+  .io { fill: #fff; stroke: #C6C6C1; stroke-width: 1.4; }
+  .guard { fill: #FDF3DC; stroke: #F2B530; stroke-width: 1.4; }
+  .guard-in { fill: #F3EBD9; stroke: #F2B530; stroke-width: 1.4; }
+  .hitl { fill: #E3EDF9; stroke: #2F6FD6; stroke-width: 2; }
+  .router { fill: #fff; stroke: #2F6FD6; stroke-width: 1.8; }
+  .tool { fill: #fff; stroke: #9C9C97; stroke-width: 1.2; stroke-dasharray: 5 4; }
+  .flow { stroke: #BDBDB8; stroke-width: 1.6; fill: none; }
+  .loop { stroke: #2F6FD6; stroke-width: 1.6; fill: none; stroke-dasharray: 6 5; }
+  .ckpt { fill: #fff; stroke: #6E6E69; stroke-width: 1.6; }
+  .t-crew { font-size: 17px; font-weight: 600; fill: #1a1a1a; }
+  .t-tag { font-size: 13px; fill: #777; }
+  .t-name { font-size: 15.5px; font-weight: 600; fill: #1a1a1a; text-anchor: middle; }
+  .t-sub { font-size: 13.5px; fill: #555; text-anchor: middle; }
+  .t-uses { font-size: 13.5px; fill: #555; }
+  .t-lbl { font-size: 13px; fill: #555; }
+  .t-blue { font-size: 13px; fill: #2F6FD6; }
+  .t-key { font-size: 14px; fill: #333; }
+  .t-note { font-size: 13px; fill: #444; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<svg viewBox="0 0 1280 1525" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Alikable agent flow: a CrewAI Flow runs Planning, Design, Implementation, Polish and Iterate, and Deploy Guide crews, with guardrails, three approval gates, an always-open user chat and a Change Router for iteration">
+  <defs>
+    <marker id="ag" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#BDBDB8"/>
+    </marker>
+    <marker id="ab" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#2F6FD6"/>
+    </marker>
+    <!-- user touchpoint badge -->
+    <symbol id="user" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="11.5" fill="#2F6FD6"/>
+      <circle cx="12" cy="9" r="3.6" fill="#fff"/>
+      <path d="M5.6 18.6 C6.6 14.8 9 13.6 12 13.6 C15 13.6 17.4 14.8 18.4 18.6 Z" fill="#fff"/>
+    </symbol>
+  </defs>
+
+  <text class="h1" x="24" y="38">Alikable: a CrewAI Flow plans, designs, builds and polishes a front end, then hands the user a deploy guide</text>
+
+  <!-- Flow band -->
+  <rect class="band" x="24" y="58" width="1236" height="44" rx="8"/>
+  <text class="t-uses" x="42" y="85"><tspan style="font-weight:600;fill:#1a1a1a">CrewAI Flow</tspan> runs every crew below  ·  Flow state = site_spec.json (one on-device file)  ·  @router steps run every gate, loop and reroute  ·  crew app hosted on Hugging Face Spaces</text>
+
+  <!-- User chat bar -->
+  <rect class="chat" x="24" y="124" width="48" height="1146" rx="24"/>
+  <use href="#user" x="36" y="136" width="24" height="24"/>
+  <text class="t-blue" transform="translate(53 700) rotate(-90)" text-anchor="middle" style="font-size:14px"><tspan style="font-weight:600">User chat</tspan>  ·  open the whole time  ·  can steer any crew with a person badge</text>
+
+  <!-- ================= LEFT COLUMN ================= -->
+
+  <!-- Intake form -->
+  <rect class="io" x="140" y="124" width="480" height="64" rx="10"/>
+  <text class="t-name" x="380" y="151">Intake form</text>
+  <text class="t-sub" x="380" y="173">predetermined questions · not an agent</text>
+  <line class="flow" x1="380" y1="188" x2="380" y2="206" marker-end="url(#ag)"/>
+
+  <!-- Input guardrail -->
+  <rect class="guard" x="140" y="208" width="480" height="54" rx="8"/>
+  <text class="t-name" x="380" y="231">Input guardrail</text>
+  <text class="t-sub" x="380" y="252">front-end only · HTML, CSS, JavaScript · no secrets</text>
+  <line class="flow" x1="380" y1="262" x2="380" y2="294" marker-end="url(#ag)"/>
+  <text class="t-lbl" x="392" y="283">IntakeForm</text>
+
+  <!-- Planning crew -->
+  <rect class="crew" x="140" y="296" width="480" height="270" rx="10"/>
+  <text class="t-crew" x="160" y="324">Planning crew</text>
+  <text class="t-tag" x="280" y="324">· writes site_spec.json</text>
+  <use href="#user" x="588" y="306" width="22" height="22"/>
+
+  <rect class="agent" x="160" y="342" width="210" height="62" rx="8"/>
+  <text class="t-name" x="265" y="367">Discovery Interviewer</text>
+  <text class="t-sub" x="265" y="389">Q&amp;A chat · asks about APIs</text>
+  <line class="flow" x1="370" y1="373" x2="388" y2="373" marker-end="url(#ag)"/>
+  <rect class="agent" x="390" y="342" width="210" height="62" rx="8"/>
+  <text class="t-name" x="495" y="367">Spec Writer</text>
+  <text class="t-sub" x="495" y="389">pages · features · plan</text>
+  <line class="flow" x1="470" y1="404" x2="470" y2="424" marker-end="url(#ag)"/>
+
+  <rect class="agent" x="390" y="426" width="210" height="62" rx="8"/>
+  <text class="t-name" x="495" y="451">Copywriter</text>
+  <text class="t-sub" x="495" y="473">user copy or placeholders</text>
+  <line class="flow" x1="390" y1="457" x2="372" y2="457" marker-end="url(#ag)"/>
+  <rect class="agent" x="160" y="426" width="210" height="62" rx="8"/>
+  <text class="t-name" x="265" y="451">Spec Critic</text>
+  <text class="t-sub" x="265" y="473">checks spec vs answers</text>
+  <polyline class="flow" points="265,488 265,504 610,504 610,373 602,373" marker-end="url(#ag)"/>
+  <text class="t-lbl" x="380" y="524" text-anchor="middle">critic returns to Spec Writer, max 2 rounds</text>
+
+  <text class="t-uses" x="160" y="550">uses: design-practices PDF · memory · research team</text>
+  <line class="flow" x1="380" y1="566" x2="380" y2="598" marker-end="url(#ag)"/>
+  <circle class="ckpt" cx="380" cy="580" r="5"/>
+  <text class="t-lbl" x="394" y="587">site_spec v1</text>
+
+  <!-- HITL #1 -->
+  <polygon class="hitl" points="380,600 520,638 380,676 240,638"/>
+  <text class="t-name" x="380" y="634">HITL #1</text>
+  <text class="t-sub" x="380" y="655">approve spec</text>
+  <polyline class="loop" points="240,638 116,638 116,373 138,373" marker-end="url(#ab)"/>
+  <text class="t-blue" x="124" y="630">edit spec</text>
+  <line class="flow" x1="380" y1="676" x2="380" y2="708" marker-end="url(#ag)"/>
+  <text class="t-lbl" x="392" y="697">approve</text>
+
+  <!-- Design crew -->
+  <rect class="crew" x="140" y="710" width="480" height="232" rx="10"/>
+  <text class="t-crew" x="160" y="738">Design crew</text>
+  <text class="t-tag" x="263" y="738">· writer / critic pair · user-editable</text>
+  <use href="#user" x="588" y="720" width="22" height="22"/>
+
+  <rect class="agent" x="160" y="756" width="210" height="62" rx="8"/>
+  <text class="t-name" x="265" y="781">Design System Designer</text>
+  <text class="t-sub" x="265" y="803">tokens · components · layout</text>
+  <line class="flow" x1="370" y1="787" x2="388" y2="787" marker-end="url(#ag)"/>
+  <rect class="agent" x="390" y="756" width="210" height="62" rx="8"/>
+  <text class="t-name" x="495" y="781">Design Critic</text>
+  <text class="t-sub" x="495" y="803">checks vs site_spec</text>
+  <polyline class="flow" points="495,818 495,834 265,834 265,820" marker-end="url(#ag)"/>
+  <text class="t-lbl" x="380" y="854" text-anchor="middle">revise, max 3 rounds</text>
+
+  <text class="t-uses" x="160" y="878">uses: preexisting design templates · research team</text>
+  <rect class="guard-in" x="160" y="890" width="440" height="36" rx="8"/>
+  <text class="t-sub" x="380" y="913" style="fill:#333">Output guardrail: valid CSS, every page has a layout</text>
+  <line class="flow" x1="380" y1="942" x2="380" y2="974" marker-end="url(#ag)"/>
+  <circle class="ckpt" cx="380" cy="956" r="5"/>
+  <text class="t-lbl" x="394" y="963">site_spec v2 + styles.css</text>
+
+  <!-- HITL #2 -->
+  <polygon class="hitl" points="380,976 520,1014 380,1052 240,1014"/>
+  <text class="t-name" x="380" y="1010">HITL #2</text>
+  <text class="t-sub" x="380" y="1031">edit or approve design</text>
+  <polyline class="loop" points="240,1014 116,1014 116,787 138,787" marker-end="url(#ab)"/>
+  <text class="t-blue" x="124" y="1006">edit design</text>
+  <polyline class="flow" points="520,1014 665,1014 665,155 718,155" marker-end="url(#ag)"/>
+  <text class="t-lbl" x="532" y="1006">approve</text>
+
+  <!-- Change Router -->
+  <polygon class="router" points="230,1140 260,1108 500,1108 530,1140 500,1172 260,1172"/>
+  <text class="t-name" x="380" y="1136">Change Router</text>
+  <text class="t-sub" x="380" y="1158">sends each change to the right crew</text>
+  <line class="loop" x1="72" y1="1140" x2="228" y2="1140" marker-end="url(#ab)"/>
+  <text class="t-blue" x="82" y="1132">new request</text>
+  <!-- reroutes: up to Planning / Design -->
+  <polyline class="loop" points="300,1108 300,1080 96,1080 96,457 138,457" marker-end="url(#ab)"/>
+  <polyline class="loop" points="96,806 138,806" marker-end="url(#ab)"/>
+  <text class="t-blue" x="106" y="1073">style → Design · new page → Planning</text>
+  <!-- reroute: small fixes to Polish & Iterate -->
+  <polyline class="loop" points="530,1140 690,1140 690,583 718,583" marker-end="url(#ab)"/>
+  <text class="t-blue" x="542" y="1132">small fix → Polish</text>
+
+  <!-- ================= RIGHT COLUMN ================= -->
+
+  <!-- Implementation crew -->
+  <rect class="crew" x="720" y="124" width="480" height="348" rx="10"/>
+  <text class="t-crew" x="740" y="152">Implementation crew</text>
+  <use href="#user" x="1168" y="134" width="22" height="22"/>
+
+  <rect class="agent" x="740" y="170" width="210" height="62" rx="8"/>
+  <text class="t-name" x="845" y="195">API Integrator</text>
+  <text class="t-sub" x="845" y="217">API client or mock data</text>
+  <line class="flow" x1="950" y1="201" x2="968" y2="201" marker-end="url(#ag)"/>
+  <rect class="agent" x="970" y="170" width="210" height="62" rx="8"/>
+  <text class="t-name" x="1075" y="195">Page Builders</text>
+  <text class="t-sub" x="1075" y="217">parallel · one per page</text>
+  <line class="flow" x1="1045" y1="232" x2="1045" y2="252" marker-end="url(#ag)"/>
+  <line class="flow" x1="1105" y1="254" x2="1105" y2="234" marker-end="url(#ag)"/>
+
+  <rect class="tool" x="740" y="254" width="210" height="62" rx="8"/>
+  <text class="t-name" x="845" y="279">Build Checker (tool)</text>
+  <text class="t-sub" x="845" y="301">lint + validate HTML/CSS/JS</text>
+  <line class="flow" x1="950" y1="285" x2="968" y2="285" marker-end="url(#ag)"/>
+  <rect class="agent" x="970" y="254" width="210" height="62" rx="8"/>
+  <text class="t-name" x="1075" y="279">Code Reviewer</text>
+  <text class="t-sub" x="1075" y="301">checks vs site_spec</text>
+  <text class="t-lbl" x="960" y="340" text-anchor="middle">Page Builders run in parallel · review loop max 3 rounds</text>
+
+  <text class="t-uses" x="740" y="364">uses: MCP Filesystem</text>
+  <rect class="guard-in" x="740" y="374" width="440" height="36" rx="8"/>
+  <text class="t-sub" x="960" y="397" style="fill:#333">Tool guardrail: sandbox only · allowlisted CDN libraries</text>
+  <rect class="guard-in" x="740" y="418" width="440" height="36" rx="8"/>
+  <text class="t-sub" x="960" y="441" style="fill:#333">Output guardrail: valid code · no API keys in client code</text>
+  <line class="flow" x1="960" y1="472" x2="960" y2="504" marker-end="url(#ag)"/>
+  <circle class="ckpt" cx="960" cy="486" r="5"/>
+  <text class="t-lbl" x="974" y="493">build v1</text>
+
+  <!-- Polish & Iterate crew -->
+  <rect class="crew" x="720" y="506" width="480" height="260" rx="10"/>
+  <text class="t-crew" x="740" y="534">Polish &amp; Iterate crew</text>
+  <text class="t-tag" x="916" y="534">· also applies small changes</text>
+  <use href="#user" x="1168" y="516" width="22" height="22"/>
+
+  <rect class="agent" x="740" y="552" width="210" height="62" rx="8"/>
+  <text class="t-name" x="845" y="577">QA Tester</text>
+  <text class="t-sub" x="845" y="599">finds bugs in browser</text>
+  <rect class="agent" x="970" y="552" width="210" height="62" rx="8"/>
+  <text class="t-name" x="1075" y="577">Consistency Auditor</text>
+  <text class="t-sub" x="1075" y="599">style matches site_spec</text>
+  <line class="flow" x1="870" y1="614" x2="870" y2="640" marker-end="url(#ag)"/>
+  <line class="flow" x1="1050" y1="614" x2="1050" y2="640" marker-end="url(#ag)"/>
+  <rect class="agent" x="840" y="642" width="240" height="62" rx="8"/>
+  <text class="t-name" x="960" y="667">Fixer</text>
+  <text class="t-sub" x="960" y="689">applies all fixes</text>
+  <polyline class="flow" points="840,673 770,673 770,616" marker-end="url(#ag)"/>
+  <text class="t-lbl" x="740" y="726">re-check after fixes, max 2 rounds</text>
+
+  <text class="t-uses" x="740" y="750">uses: MCP Playwright · MCP Filesystem · site_spec.json</text>
+  <line class="flow" x1="960" y1="766" x2="960" y2="798" marker-end="url(#ag)"/>
+  <circle class="ckpt" cx="960" cy="780" r="5"/>
+  <text class="t-lbl" x="974" y="787">QAReport</text>
+
+  <!-- HITL #3 -->
+  <polygon class="hitl" points="960,800 1100,838 960,876 820,838"/>
+  <text class="t-name" x="960" y="834">HITL #3</text>
+  <text class="t-sub" x="960" y="855">approve or change</text>
+  <polyline class="loop" points="1100,838 1240,838 1240,1290 380,1290 380,1174" marker-end="url(#ab)"/>
+  <text class="t-blue" x="1112" y="830">change</text>
+  <line class="flow" x1="960" y1="876" x2="960" y2="908" marker-end="url(#ag)"/>
+  <text class="t-lbl" x="972" y="897">approve</text>
+
+  <!-- Deploy Guide crew -->
+  <rect class="crew" x="720" y="910" width="480" height="220" rx="10"/>
+  <text class="t-crew" x="740" y="938">Deploy Guide crew</text>
+  <use href="#user" x="1168" y="920" width="22" height="22"/>
+
+  <rect class="agent" x="740" y="956" width="210" height="62" rx="8"/>
+  <text class="t-name" x="845" y="981">Deploy Guide Writer</text>
+  <text class="t-sub" x="845" y="1003">steps per static host</text>
+  <line class="flow" x1="952" y1="987" x2="968" y2="987" marker-start="url(#ag)" marker-end="url(#ag)"/>
+  <rect class="tool" x="970" y="956" width="210" height="62" rx="8"/>
+  <text class="t-name" x="1075" y="981">Release Builder (tool)</text>
+  <text class="t-sub" x="1075" y="1003">package + local smoke test</text>
+  <text class="t-lbl" x="960" y="1042" text-anchor="middle">fix and re-test, max 2 rounds</text>
+
+  <text class="t-uses" x="740" y="1066">uses: knowledge (deploy guides) · MCP Playwright</text>
+  <rect class="guard-in" x="740" y="1078" width="440" height="36" rx="8"/>
+  <text class="t-sub" x="960" y="1101" style="fill:#333">Output guardrail: every step tested, no secrets</text>
+  <line class="flow" x1="960" y1="1130" x2="960" y2="1162" marker-end="url(#ag)"/>
+  <circle class="ckpt" cx="960" cy="1144" r="5"/>
+  <text class="t-lbl" x="974" y="1151">site.zip + DEPLOY.md</text>
+
+  <!-- Final output -->
+  <rect class="io" x="720" y="1164" width="480" height="70" rx="35"/>
+  <text class="t-name" x="960" y="1192">User downloads site.zip + DEPLOY.md</text>
+  <text class="t-sub" x="960" y="1215">user deploys it · memory saves preferences</text>
+  <line class="loop" x1="960" y1="1234" x2="960" y2="1290"/>
+  <text class="t-blue" x="970" y="1268">next change</text>
+  <text class="t-blue" x="560" y="1282" text-anchor="middle">change request or next iteration → Change Router</text>
+
+  <!-- ================= FOOTER ================= -->
+
+  <!-- Research team tool -->
+  <rect class="tool" x="140" y="1318" width="480" height="64" rx="10"/>
+  <text class="t-name" x="380" y="1345">Research team (tool)</text>
+  <text class="t-sub" x="380" y="1367">callable by any crew · results treated as untrusted input</text>
+
+  <!-- Key -->
+  <text class="t-key" x="140" y="1414" style="font-weight:600;fill:#555">Key</text>
+  <rect class="guard" x="142" y="1428" width="30" height="18" rx="6"/>
+  <text class="t-key" x="186" y="1442">Guardrail</text>
+  <polygon class="hitl" points="157,1459 172,1469 157,1479 142,1469"/>
+  <text class="t-key" x="186" y="1474">Approval gate (blocks the Flow)</text>
+  <use href="#user" x="146" y="1492" width="22" height="22"/>
+  <text class="t-key" x="186" y="1508">User touchpoint (anytime)</text>
+
+  <line class="loop" x1="470" y1="1437" x2="500" y2="1437"/>
+  <text class="t-key" x="514" y="1442">Loop back / reroute</text>
+  <rect class="tool" x="470" y="1460" width="30" height="18" rx="6"/>
+  <text class="t-key" x="514" y="1474">Tool</text>
+  <circle class="ckpt" cx="485" cy="1503" r="5"/>
+  <text class="t-key" x="514" y="1508">Checkpoint saved</text>
+
+  <!-- Notes -->
+  <rect class="io" x="720" y="1318" width="520" height="196" rx="10"/>
+  <text class="t-key" x="740" y="1346" style="font-weight:600;fill:#555">Notes</text>
+  <text class="t-note" x="740" y="1372">• site_spec.json: one on-device file, the Flow's shared state</text>
+  <text class="t-note" x="740" y="1396">• Checkpoint: spec + code committed after each crew (GitHub MCP)</text>
+  <text class="t-note" x="740" y="1420">• Stack: HTML, CSS, JavaScript · no backend, or the user's existing API</text>
+  <text class="t-note" x="740" y="1444">• Crew app runs on Hugging Face Spaces</text>
+  <text class="t-note" x="740" y="1468">• Agents never deploy the site; the user does, following DEPLOY.md</text>
+  <text class="t-note" x="740" y="1492">• Gates pause the Flow; the chat lets the user steer at any time</text>
+</svg>
+</div>
+</body>
+</html>

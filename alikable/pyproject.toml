@@ -1,0 +1,25 @@
+[project]
+name = "alikable"
+version = "0.1.0"
+description = "alikable using crewAI"
+authors = [{ name = "Your Name", email = "you@example.com" }]
+requires-python = ">=3.10,<3.14"
+dependencies = [
+    "crewai[tools]>=1.15.28,<2.0.0"
+]
+
+[project.scripts]
+alikable = "alikable.main:run"
+run_crew = "alikable.main:run"
+train = "alikable.main:train"
+replay = "alikable.main:replay"
+test = "alikable.main:test"
+run_with_trigger = "alikable.main:run_with_trigger"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.crewai]
+type = "crew"
+project_id = "dbf5c21e-67c6-4c53-b6e8-60f5540ab988"
