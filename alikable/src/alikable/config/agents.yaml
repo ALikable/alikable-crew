@@ -1,6 +1,10 @@
 # Alikable agents, grouped by crew to match Documents/Agent_Diagram.png.
 # Build Checker and Release Builder are tools, not agents, so they live in tools/.
 # The intake form is plain UI, not an agent.
+# GUIDE:
+# Other ROLES to add: tools, llm, max_iter, max_execution_time,
+#  verbose, allow_delegation, memory, cache, respect_context_window, 
+# allow_code_execution, reasoning
 
 # ---------------------------------------------------------------- Planning crew
 
