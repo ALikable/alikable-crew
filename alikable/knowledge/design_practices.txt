@@ -1,0 +1,103 @@
+ALIKABLE DESIGN-PRACTICES GUIDE
+Used by: Discovery Interviewer (to suggest options and ask good questions) and Spec Critic (to check site_spec.json).
+Scope: front-end only. Plain HTML, CSS and JavaScript. Static files. No backend is built; the app only calls the user's existing API, or uses mock data.
+
+[Design practices | 1. Scope rules for every Alikable app]
+- Build front-end only: HTML, CSS and JavaScript files that run in a browser with no build step.
+- Never build, change or host a backend. If the user has an API, the app calls it. If not, the app uses mock data with the same shape.
+- External libraries may only come from allowlisted CDNs (cdnjs.cloudflare.com, cdn.jsdelivr.net, unpkg.com). Prefer no library when plain JavaScript is enough.
+- Never put API keys, tokens, passwords or other secrets in client code, in the spec, or in example data. A browser cannot keep a secret.
+- Everything in the spec must trace back to something the user said in the intake form or the interview. Do not invent features, pages, prices, names or contact details.
+
+[Design practices | 2. Common page types and what each usually contains]
+- Landing / home page: a clear headline that says what the app does, a short supporting line, one main call-to-action button, and optional feature highlights.
+- Login page: username or email field, password field, a submit button, an error message area, and a link back home. Only include "forgot password" or "sign up" if the API has endpoints for them.
+- Dashboard page: a short summary of the user's data (counts, latest items), and links to the main actions.
+- List page: a list or table of items from a GET endpoint, with loading, empty and error states. Add search, filter or sort only if the user asked or the API supports it.
+- Detail page: all fields of one item from a GET-by-id endpoint, plus actions such as edit or delete if those endpoints exist.
+- Form page (create / edit): one input per field the POST or PUT endpoint accepts, labels on every input, validation messages, and a submit button that shows progress.
+- Settings / profile page: only if the API has endpoints for profile data.
+- Rule: every page must have a reason to exist. A page with no endpoint and no user request should be removed.
+
+[Design practices | 3. Mapping API endpoints to UI]
+- GET /items (list) -> a list or table page.
+- GET /items/{id} -> a detail page or a detail panel.
+- POST /items -> a create form (page, modal or inline form).
+- PUT or PATCH /items/{id} -> an edit form, prefilled with current values.
+- DELETE /items/{id} -> a delete button with a confirmation step.
+- POST /auth/login -> a login page; the response token is used for later requests.
+- If an action has no endpoint, the UI must not offer it. Example: if there is no update endpoint, a "done" field is shown read-only.
+- Record for each endpoint: method, path, request body shape, response shape, and whether it needs login.
+
+[Design practices | 4. Data states every API-driven screen needs]
+- Loading state: show a spinner or skeleton while waiting; disable buttons that would send the request twice.
+- Empty state: a friendly message and the next action ("No tasks yet. Add your first task.").
+- Error state: a plain-language message, what the user can do next, and a retry button. Never show raw stack traces.
+- Success state: confirm actions that change data ("Task added").
+- A spec that lists a data screen without these four states is incomplete.
+
+[Design practices | 5. Authentication in a static front end]
+- The login page sends credentials to the user's login endpoint and receives a token.
+- Keep the token in memory or sessionStorage for the session. Explain the trade-off in the spec: sessionStorage survives a page reload but is readable by any script on the page, so the site must not load untrusted scripts.
+- Send the token on later requests in the header the API expects (usually Authorization: Bearer <token>).
+- When a request returns 401, clear the token and send the user to the login page.
+- Logout clears the token and returns to the login or home page.
+- Never ask the user for real secrets during the interview. Ask only for the auth method (for example "bearer token from POST /api/auth/login").
+
+[Design practices | 6. Navigation and layout]
+- Keep navigation to the main pages only; 3 to 6 links is typical.
+- Show which page is active in the navigation.
+- On small screens, collapse navigation into a menu button.
+- Pages that need login should not appear in navigation until the user is logged in.
+- Every page needs a clear title that matches its navigation label.
+
+[Design practices | 7. Forms]
+- Every input has a visible label (not only a placeholder).
+- Mark required fields, and validate before sending: required, length, email format, number ranges.
+- Show errors next to the field they belong to, in plain words.
+- Keep the user's input if the request fails, so they do not retype it.
+- Disable the submit button while sending, and show progress.
+
+[Design practices | 8. Accessibility (minimum bar)]
+- Text contrast at least 4.5:1 against its background (3:1 for large text).
+- Every image has alt text; decorative images use empty alt.
+- Every interaction works with the keyboard, in a logical tab order, with a visible focus outline.
+- Use real elements: button for actions, a for links, form/label/input for forms, headings in order (h1, h2, h3).
+- Do not use color as the only way to show meaning (for example errors also need text or an icon).
+
+[Design practices | 9. Responsive design]
+- Design mobile-first, then add breakpoints (for example 640px, 1024px).
+- Touch targets at least 44 by 44 pixels.
+- Tables become stacked cards or scroll horizontally inside their own box on small screens; the page itself must not scroll sideways.
+- Images and media scale with max-width: 100%.
+
+[Design practices | 10. Software qualities a user may pick, and how to implement them]
+- Intuitive: one main action per page, familiar patterns, clear labels, helpful empty states.
+- Responsive: mobile-first layout, flexible grids, tested at phone, tablet and desktop widths.
+- Accessible: the minimum bar in section 8, plus semantic HTML and ARIA only where needed.
+- Fast: no heavy libraries, small images, load data once per page, show loading states.
+- Consistent: one shared stylesheet with design tokens, reused components, the same spacing scale everywhere.
+- Trustworthy / professional: calm colors, no clutter, honest error messages, no placeholder text left visible.
+- The spec must say which qualities the user picked and how each will be implemented.
+
+[Design practices | 11. Interview questions to ask when the user is unsure]
+- Purpose: What should a visitor be able to do in their first minute?
+- Audience: Who uses it, and on what device mostly (phone or desktop)?
+- Pages: Which screens do you picture? Which one is most important?
+- API: Is there an existing backend? If yes: base URL, endpoints, request and response shapes, and auth method. Never ask for secret values.
+- Look and feel: Light or dark? Any brand colors or fonts? A site whose style you like?
+- Qualities: Which matter most: intuitive, responsive, accessible, fast, consistent?
+- Content: Do you have your own text, names and images, or should we use clearly marked placeholders?
+- When the user is unsure, offer two or three concrete options from this guide instead of an open question.
+
+[Design practices | 12. Spec quality checklist (used by the Spec Critic)]
+- Every page lists its purpose, its content, its features and the endpoints it uses.
+- Every endpoint the user gave is used somewhere, or the spec says why it is not used.
+- Every feature traces back to the user's answers; nothing is invented.
+- Every data screen has loading, empty, error and success states.
+- Auth flow is described if any endpoint needs login.
+- Style choices and selected qualities are recorded, with how they will be implemented.
+- The build plan is ordered: shared stylesheet and components first, then API module, then pages.
+- The whole plan is buildable as static HTML, CSS and JavaScript with allowlisted CDNs only.
+- No secrets anywhere. Placeholders such as [Company name] are clearly marked.
+- Each fix the critic requests must be specific: which page, which field, what to change.

@@ -1,0 +1,74 @@
+ALIKABLE PREEXISTING DESIGN TEMPLATES
+Used by: Design System Designer (to start from a template and adapt it) and Design Critic (to check consistency).
+How to use: pick the template closest to the user's look and feel, then adapt colors, fonts and density to their answers. Never copy a template unchanged if the user gave brand colors or fonts. All templates are plain CSS with custom properties (design tokens) and no build step.
+
+[Design templates | Rules that apply to every template]
+- Define every color, font, size, radius and shadow once as a CSS custom property in :root. Pages use the tokens, never raw values.
+- Spacing scale (all templates): --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-5: 24px; --space-6: 32px; --space-7: 48px; --space-8: 64px.
+- Type scale (all templates): --text-sm: 0.875rem; --text-base: 1rem; --text-lg: 1.125rem; --text-xl: 1.25rem; --text-2xl: 1.5rem; --text-3xl: 2rem; line-height 1.5 for body, 1.2 for headings.
+- Add a dark-mode or light-mode alternative only if the user asked for one.
+- Comment every token with why it was chosen, so the user can edit it by hand.
+- Avoid the generic AI look: no purple-to-blue gradients by default, no glassmorphism, no emoji as icons, no centered text for long paragraphs, no oversized hero with a stock illustration. Choose one accent color and use it sparingly.
+- Fonts come from Google Fonts or the system font stack only.
+
+[Design templates | Template A: Clean Professional]
+- Best for: business tools, admin panels, internal dashboards, B2B apps.
+- Mood: calm, trustworthy, neutral.
+- Colors: --color-bg: #ffffff; --color-surface: #f6f7f9; --color-border: #dfe3e8; --color-text: #1b2430; --color-text-muted: #5b6675; --color-accent: #1f6feb; --color-accent-hover: #1858c4; --color-success: #1a7f37; --color-warning: #9a6700; --color-danger: #cf222e.
+- Fonts: headings and body "Inter", fallback system-ui, sans-serif.
+- Radius: --radius-sm: 4px; --radius-md: 8px. Shadow: --shadow-1: 0 1px 2px rgba(16,24,40,.06), 0 1px 3px rgba(16,24,40,.10).
+- Density: compact tables, 14-16px text, left-aligned layout with a top navigation bar.
+
+[Design templates | Template B: Dark Dashboard]
+- Best for: monitoring, analytics, developer tools, data-heavy screens.
+- Mood: focused, technical.
+- Colors: --color-bg: #0f1419; --color-surface: #171d24; --color-border: #2a333d; --color-text: #e6edf3; --color-text-muted: #9aa7b4; --color-accent: #3fb6a8; --color-accent-hover: #5ccabd; --color-success: #3fb950; --color-warning: #d29922; --color-danger: #f85149.
+- Fonts: body "IBM Plex Sans", numbers and code "IBM Plex Mono".
+- Radius: --radius-sm: 4px; --radius-md: 6px. Shadows are avoided; use borders and surface color to separate areas.
+- Density: medium; side navigation on desktop, top menu button on mobile. Check contrast carefully: muted text must still reach 4.5:1 on the surface color.
+
+[Design templates | Template C: Warm Friendly]
+- Best for: consumer apps, small businesses, community sites, booking and ordering.
+- Mood: welcoming, human.
+- Colors: --color-bg: #fffaf3; --color-surface: #ffffff; --color-border: #ecdcc8; --color-text: #2d2418; --color-text-muted: #6b5c4a; --color-accent: #c2410c; --color-accent-hover: #9a3412; --color-success: #2f7d32; --color-warning: #a16207; --color-danger: #b42318.
+- Fonts: headings "Fraunces" (serif), body "Source Sans 3".
+- Radius: --radius-sm: 8px; --radius-md: 14px. Shadow: --shadow-1: 0 2px 8px rgba(45,36,24,.08).
+- Density: relaxed; generous spacing, larger buttons, cards for items.
+
+[Design templates | Template D: Minimal Editorial]
+- Best for: portfolios, content sites, documentation, simple landing pages.
+- Mood: quiet, typographic, content-first.
+- Colors: --color-bg: #fbfbf8; --color-surface: #ffffff; --color-border: #e4e2dc; --color-text: #191919; --color-text-muted: #5e5e5e; --color-accent: #0b6e4f; --color-accent-hover: #08553d; --color-success: #0b6e4f; --color-warning: #8a5a00; --color-danger: #b3261e.
+- Fonts: headings "Newsreader" (serif), body "Inter".
+- Radius: --radius-sm: 2px; --radius-md: 4px. Almost no shadows.
+- Density: wide margins, max content width 720px for reading, strong headings, links underlined.
+
+[Design templates | Component catalog (shared by all templates)]
+- Button: variants primary (accent background), secondary (border only), danger (danger color), and disabled. States: hover, focus-visible outline, active, loading (spinner plus "Saving...").
+- Input / select / textarea: label above the field, help text below, error text in danger color with an icon, focus outline in accent color.
+- Card: surface background, border or shadow, padding --space-5, used for list items and summaries.
+- Table: header row, zebra or bordered rows, actions column on the right; becomes stacked cards below 640px.
+- Navigation bar: logo or app name on the left, page links, active link marked, menu button on mobile.
+- Alert / toast: success, warning, error, info; includes text, not color alone.
+- Modal / confirm dialog: title, message, cancel and confirm buttons; traps focus; closes with Escape.
+- Empty state: short message, optional icon, one call-to-action button.
+- Loading: spinner for actions, skeleton blocks for lists and cards.
+- Reuse rule: if two pages need the same element, it is one component with variants, not two components.
+
+[Design templates | Layout patterns by page type]
+- Login: centered card, max width 400px, app name above the form, error alert above the fields.
+- Dashboard: page title, a row of 2 to 4 summary cards, then a recent-items list.
+- List: page title with the main action button on the right, optional search or filter row, then the table or card list.
+- Detail: back link, item title, fields in a two-column definition list on desktop (one column on mobile), actions at the bottom.
+- Form: page title, single column of fields, max width 560px, primary submit button and a secondary cancel link.
+- Landing: headline and supporting line, one call-to-action, then 3 feature cards, then footer.
+- Every layout uses the shared container: max width 1120px, side padding --space-4 on mobile and --space-6 on desktop.
+
+[Design templates | Design review checklist (used by the Design Critic)]
+- Every component in the list is used by at least one page, and every element on a page comes from the component list.
+- No raw colors, sizes or fonts in page styles; tokens only.
+- The template chosen matches the user's look and feel, and the user's brand colors replace the template accent when given.
+- Contrast meets 4.5:1 for normal text in every state, including disabled and muted text.
+- Every page in site_spec.json has a layout.
+- Focus states are visible and consistent across components.
+- Each requested change names the component or page, what to change, and why.

@@ -1,0 +1,60 @@
+ALIKABLE DEPLOY GUIDES FOR STATIC SITES
+Used by: Deploy Guide Writer (to write DEPLOY.md for the user).
+The site Alikable produces is a folder of static files (index.html, other .html pages, styles.css, JavaScript files, assets). The user deploys it themselves. Alikable never deploys anything and never asks for the user's account passwords or keys.
+
+[Deploy guides | Before deploying: checklist for every host]
+- Unzip site.zip. Confirm index.html is at the top level of the folder (not inside a subfolder).
+- Open index.html locally in a browser and click through every page once.
+- Set the API base URL in the single config value (for example API_BASE_URL in config.js) to the real backend URL. If the site uses mock data, switch the config to the real API only when the backend is ready.
+- Use relative paths for files inside the site (styles.css, ./app.js), not paths from the user's own computer.
+- Make sure no secrets are in any file. Search the folder for "key", "secret", "token" and "password".
+
+[Deploy guides | Netlify]
+- Easiest option for beginners; free tier available; HTTPS included.
+- Option 1, drag and drop: sign in to Netlify, open the Sites page, and drag the site folder onto the deploy area (Netlify Drop). Netlify gives a URL like https://random-name.netlify.app.
+- Option 2, from Git: push the folder to a GitHub repository, choose "Add new site" then "Import an existing project", pick the repository, leave the build command empty, and set the publish directory to the folder that contains index.html.
+- Change the site name in Site configuration to get a nicer URL. A custom domain can be added under Domain management.
+- For later changes: drag the updated folder again, or push to the repository if connected to Git.
+
+[Deploy guides | Vercel]
+- Good for Git-based workflows; free hobby tier; HTTPS included.
+- From Git: push the folder to GitHub, sign in to Vercel, choose "Add New" then "Project", import the repository, choose "Other" as the framework preset, leave the build command empty, and set the output directory to the folder that contains index.html (or leave it as the root).
+- From the command line (needs Node.js): run npx vercel inside the site folder and follow the prompts; run npx vercel --prod to publish to production.
+- Every push to the main branch redeploys automatically when connected to Git.
+
+[Deploy guides | GitHub Pages]
+- Free for public repositories; HTTPS included; URL like https://username.github.io/repository-name/.
+- Steps: create a GitHub repository, upload or push the site files with index.html at the root, then open the repository Settings, choose Pages, set Source to "Deploy from a branch", select the main branch and the / (root) folder, and save.
+- Wait one to two minutes, then open the URL shown on the Pages settings screen.
+- Because the site lives under /repository-name/, links must be relative (about.html, ./styles.css). Links that start with / will break.
+
+[Deploy guides | AWS S3 static website hosting]
+- Good when the user already uses AWS. Costs are small but not zero.
+- Steps: create an S3 bucket; under Permissions, turn off "Block all public access" for this bucket and confirm; add a bucket policy that allows public s3:GetObject on the bucket's objects; under Properties, enable "Static website hosting" and set the index document to index.html (and an error document if wanted); upload all site files keeping the folder structure.
+- The website endpoint URL is shown in the Static website hosting section.
+- Important: the S3 website endpoint uses HTTP only. For HTTPS, put Amazon CloudFront in front of the bucket. Browsers warn users about HTTP-only sites, and if the site is served over HTTPS, its API must be HTTPS too (mixed content).
+- Only make public the bucket that holds the website. Never store other data in it.
+
+[Deploy guides | Connecting the deployed site to the user's API (CORS)]
+- When the site and the API are on different domains, the browser blocks API calls unless the API allows the site's origin. This is CORS.
+- The user must add the deployed site's URL (for example https://my-site.netlify.app) to the allowed origins on their backend. Allow only that origin, not "*", when the API uses login tokens or cookies.
+- The API must also allow the methods the site uses (GET, POST, PUT, DELETE) and the headers it sends (for example Authorization and Content-Type).
+- Example for a Spring Boot backend: add a CORS configuration (a WebMvcConfigurer with addCorsMappings, or @CrossOrigin on the controllers) that allows the site's origin, the needed methods and the Authorization header.
+- Symptom of a CORS problem: the browser console shows "blocked by CORS policy" even though the API works in Postman. The fix is always on the backend, not in the site.
+- Mixed content: an HTTPS site cannot call an HTTP API. The API needs HTTPS too.
+
+[Deploy guides | Troubleshooting after deploy]
+- Blank page: index.html is not at the top level of the published folder, or a script path is wrong. Open the browser console to see the error.
+- Styles missing: the CSS path is absolute (/styles.css) on GitHub Pages, or the file name's capital letters do not match (hosts are case-sensitive).
+- 404 when refreshing a page: use real .html files for each page, or configure the host's redirect rules.
+- API calls fail: check the API base URL in config, then CORS, then HTTPS (mixed content), then whether the token is being sent.
+- Old version still showing: hard refresh the browser or wait for the host's cache to clear.
+
+[Deploy guides | What DEPLOY.md must contain]
+- A short summary of what is being deployed and which host the user picked.
+- The "before deploying" checklist.
+- Numbered steps for the chosen host only, each one small and testable.
+- Where to set the real API base URL, and the CORS change the backend needs.
+- How to update the site later.
+- A troubleshooting section.
+- No secrets, no account passwords, and no step that Alikable has not checked against the packaged site.

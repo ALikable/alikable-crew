@@ -1,6 +1,7 @@
 from crewai import Agent, Crew, Process, Task
 from crewai.project import CrewBase, agent, crew, task
 from crewai.agents.agent_builder.base_agent import BaseAgent
+from crewai.knowledge.source.text_file_knowledge_source import TextFileKnowledgeSource
 
 
 @CrewBase
@@ -10,19 +11,18 @@ class Alikable():
     agents: list[BaseAgent]
     tasks: list[Task]
 
-    @agent
-    def researcher(self) -> Agent:
-        return Agent(
-            config=self.agents_config['researcher'], # type: ignore[index]
-            verbose=True
-        )
+
 
     @agent
-    def reporting_analyst(self) -> Agent:
+    def discovery_interviewer(self) -> Agent:
         return Agent(
-            config=self.agents_config['reporting_analyst'], # type: ignore[index]
-            verbose=True
+            config=self.agents_config["discovery_interviewer"],
+            knowledge_source=[
+                TextFileKnowledgeSource(file_paths=["design_practices.txt"])
+            ],
+            verbose=True,
         )
+
 
     @task
     def research_task(self) -> Task:
