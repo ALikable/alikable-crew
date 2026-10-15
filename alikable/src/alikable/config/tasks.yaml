@@ -1,17 +1,207 @@
-research_task:
-  description: >
-    Conduct a thorough research about {topic}
-    Make sure you find any interesting and relevant information given
-    the current year is {current_year}.
-  expected_output: >
-    A list with 10 bullet points of the most relevant information about {topic}
-  agent: researcher
+# Alikable tasks, grouped by crew to match Documents/Agent_Diagram.png and agents.yaml.
+# Data moves between tasks inside a crew with `context`. Data moves between crews
+# through inputs ({site_spec}, {design}), because the Flow owns site_spec.json.
+# Review loops, approval gates and per-crew round limits belong to the Flow, not here.
 
-reporting_task:
+# ---------------------------------------------------------------- Planning crew
+
+interview_task:
   description: >
-    Review the context you got and expand each topic into a full section for a report.
-    Make sure the report is detailed and contains any and all relevant information.
+    Read the intake form answers below, then ask the user follow-up questions
+    until nothing important is unclear: purpose, audience, pages, look and feel,
+    the software qualities they care about, and whether the app must call an
+    existing API (base URL, endpoints, request and response shapes, auth method).
+    Never ask for secrets. Only front-end work in HTML, CSS and JavaScript is in scope.
+
+    Intake form: {intake_form}
   expected_output: >
-    A fully fledged report with the main topics, each with a full section of information.
-    Formatted as markdown without '```'
-  agent: reporting_analyst
+    A summary of the user's requirements under these headings: purpose, audience,
+    pages, look and feel, qualities, API details, open questions.
+  agent: discovery_interviewer
+  human_input: true
+
+spec_writing_task:
+  description: >
+    Write site_spec.json from the interview summary and nothing else. For every
+    page list what is on it, its features and the API endpoints it uses. Record the
+    overall style, the qualities the user picked and how to implement them, and any
+    other notes. End with an ordered build plan.
+  expected_output: >
+    Valid JSON only, without '```'.
+  agent: spec_writer
+  context: [interview_task]
+  output_file: output/site_spec.json
+
+copywriting_task:
+  description: >
+    Add the text for every page to the spec. Use the user's own content wherever
+    they gave it; otherwise use clearly marked placeholders such as [Company name].
+    Never invent facts about the user's business.
+  expected_output: >
+    The complete updated site_spec.json. Valid JSON only, without '```'.
+  agent: copywriter
+  context: [spec_writing_task]
+  output_file: output/site_spec.json
+
+spec_review_task:
+  description: >
+    Check the spec against the interview summary. Every page, feature, endpoint and
+    style choice must trace back to something the user said, nothing they asked for
+    may be missing, and the plan must be buildable as a static HTML, CSS and
+    JavaScript site.
+  expected_output: >
+    The single word APPROVED, or a numbered list of concrete fixes, each naming the
+    part of the spec it applies to.
+  agent: spec_critic
+  context: [interview_task, copywriting_task]
+
+# ------------------------------------------------------------------ Design crew
+
+design_task:
+  description: >
+    Produce the design system for this spec, starting from the preexisting design
+    templates and avoiding a generic AI-generated look. Keep everything readable so
+    the user can edit it by hand.
+
+    Site spec: {site_spec}
+  expected_output: >
+    Markdown with four sections: components and what each is for; a stylesheet of
+    design tokens and styles with a comment explaining each decision; the structure
+    (pages, content, API endpoints per page, components used where); and a layout
+    for every page.
+  agent: design_system_designer
+  guardrail: >
+    The stylesheet is valid CSS and every page in the site spec has a layout.
+  output_file: output/design.md
+
+design_review_task:
+  description: >
+    Review the design against the spec. Every component must be correct and needed,
+    the stylesheet must follow the requirements and plan and match the preexisting
+    design templates, and every page must have a layout.
+
+    Site spec: {site_spec}
+  expected_output: >
+    The single word APPROVED, or a short list of specific changes, each with the
+    reasoning behind it.
+  agent: design_critic
+  context: [design_task]
+
+# ---------------------------------------------------------- Implementation crew
+
+api_integration_task:
+  description: >
+    Write one small JavaScript module for data. If the spec lists an existing API,
+    write a fetch client for exactly those endpoints with the base URL in one config
+    value and handling for loading and error states. Otherwise write mock data with
+    the same shape so switching to a real API only changes the config. Never put
+    API keys or secrets in client code.
+
+    Site spec: {site_spec}
+  expected_output: >
+    The path and full contents of the JavaScript module.
+  agent: api_integrator
+
+page_build_task:
+  description: >
+    Build every page in the spec, one after another, exactly as the spec and design
+    describe. For each page build the components it needs, then the layout using
+    those components, then the full page with its content and data from the API
+    module. Use only the shared stylesheet and allowlisted CDN libraries.
+
+    Site spec: {site_spec}
+
+    Design: {design}
+  expected_output: >
+    The path and full contents of every HTML, CSS and JavaScript file for every page.
+  agent: page_builder
+  context: [api_integration_task]
+  guardrail: >
+    The code is valid, contains no API keys or secrets, and loads scripts only from
+    allowlisted CDN libraries.
+
+code_review_task:
+  description: >
+    Review each built page against the spec and the design. Check that it has every
+    feature and piece of content in the spec, uses the shared components and
+    stylesheet, calls the API only through the API module, and contains no secrets.
+
+    Site spec: {site_spec}
+
+    Design: {design}
+  expected_output: >
+    The single word PASS, or line-level fixes grouped by page.
+  agent: code_reviewer
+  context: [api_integration_task, page_build_task]
+
+# ---------------------------------------------------------- Polish & Iterate crew
+
+qa_task:
+  description: >
+    Test the site like a real user. Open every page in the browser, click every link
+    and button, submit every form and watch the console for errors.
+
+    Site spec: {site_spec}
+  expected_output: >
+    A list of bugs. For each: the page, steps to reproduce, what happened and what
+    should have happened. Say so if there are none.
+  agent: qa_tester
+
+consistency_audit_task:
+  description: >
+    Compare the pages side by side and flag anything that breaks the design:
+    off-palette colors, one-off spacing or fonts, components styled differently on
+    different pages, and anything that contradicts the requirements.
+
+    Site spec: {site_spec}
+  expected_output: >
+    A list of problems, each with the page and the rule it breaks. Say so if there
+    are none.
+  agent: consistency_auditor
+
+fix_task:
+  description: >
+    Apply every fix from the QA and consistency reports, and this small user change
+    if one is given, making the smallest change that fixes each problem without
+    breaking anything else.
+
+    User change: {change_request}
+  expected_output: >
+    The path and full contents of every file you changed, and the list of problems
+    each change resolves.
+  agent: fixer
+  context: [qa_task, consistency_audit_task]
+
+# ---------------------------------------------------------- Deploy Guide crew
+
+deploy_guide_task:
+  description: >
+    Package the site and smoke-test it locally, then write DEPLOY.md: step-by-step
+    instructions a beginner can follow to deploy it on a static host. Only write
+    steps you have checked against the package. Cover common static hosts, setting
+    the API base URL, and CORS for sites that call an existing API. Never deploy
+    anything yourself and never include secrets.
+
+    Site spec: {site_spec}
+  expected_output: >
+    DEPLOY.md formatted as markdown without '```' around the whole document.
+  agent: deploy_guide_writer
+  guardrail: >
+    Every step was tested against the package and no secrets appear in the guide.
+  output_file: output/DEPLOY.md
+
+# ---------------------------------------------------------------- Change Router
+
+route_change_task:
+  description: >
+    Decide which crew handles this change with the least rework: small fixes go to
+    polish, style changes go to design, new pages or features go to planning. If the
+    request is too vague to route, ask the user one clarifying question instead.
+
+    Change request: {change_request}
+
+    Site spec: {site_spec}
+  expected_output: >
+    One line, "<crew>: <the request restated clearly for that crew>", where <crew>
+    is polish, design or planning. Or a single clarifying question.
+  agent: change_router
