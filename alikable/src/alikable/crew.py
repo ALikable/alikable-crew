@@ -11,20 +11,6 @@ class Alikable():
     agents: list[BaseAgent]
     tasks: list[Task]
 
-<<<<<<< HEAD
-
-
-    @agent
-    def discovery_interviewer(self) -> Agent:
-        return Agent(
-            config=self.agents_config["discovery_interviewer"],
-            knowledge_source=[
-                TextFileKnowledgeSource(file_paths=["design_practices.txt"])
-            ],
-            verbose=True,
-        )
-
-=======
     # ------------------------------------------------------------------ Agents
 
     @agent
@@ -126,7 +112,6 @@ class Alikable():
         )
 
     # ------------------------------------------------------------------- Tasks
->>>>>>> 2ab8b965c6dde45ee711ed3f26f5485a6a6a26c8
 
     @task
     def interview_task(self) -> Task:
