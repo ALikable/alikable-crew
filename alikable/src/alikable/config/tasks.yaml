@@ -208,13 +208,46 @@ deploy_guide_task:
 route_change_task:
   description: >
     Decide which crew handles this change with the least rework: small fixes go to
-    polish, style changes go to design, new pages or features go to planning. If the
-    request is too vague to route, ask the user one clarifying question instead.
+    polish, behavior or code changes that keep the spec and design go to
+    implementation, style changes go to design, new pages or features go to
+    planning. If the request is too vague to route, choose clarify and ask the user
+    one clarifying question instead.
 
     Change request: {change_request}
 
     Site spec: {site_spec}
   expected_output: >
-    One line, "<crew>: <the request restated clearly for that crew>", where <crew>
-    is polish, design or planning. Or a single clarifying question.
+    The crew (planning, design, implementation, polish or clarify) and the request
+    restated clearly for that crew, or the clarifying question.
   agent: change_router
+
+# -------------------------------------------------------------------- Main chat
+
+chat_task:
+  description: >
+    Handle the user's latest message in the project chat by choosing one action.
+    reply: a question or conversation about the project. Answer it from the site
+    spec, the conversation and any finished background checks.
+    change: the user wants the site changed. Restate the change clearly and
+    completely for the Change Router, and tell the user it is on its way.
+    check: the user wants something investigated without changing it. Pick the
+    reviewers to run in the background (qa_tester, consistency_auditor,
+    code_reviewer, spec_critic, design_critic) and the question for them.
+    approve: only when the build is waiting for approval and the user approves it.
+    If background jobs have finished, summarize their results in your reply. If the
+    user asks about progress, answer from the job list. Never say work is done while
+    its job is still queued or running.
+
+    Waiting for approval: {awaiting_approval}
+
+    Background jobs: {jobs}
+
+    Conversation so far: {history}
+
+    Site spec: {site_spec}
+
+    Latest message: {message}
+  expected_output: >
+    The action, the reply to show the user, and for change or check the details
+    the next step needs.
+  agent: chat_agent

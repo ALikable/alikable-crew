@@ -2,7 +2,7 @@ from crewai import Agent, Crew, Process, Task
 from crewai.project import CrewBase, agent, crew, task
 from crewai.agents.agent_builder.base_agent import BaseAgent
 from crewai.knowledge.source.text_file_knowledge_source import TextFileKnowledgeSource
-from alikable.models import DesignSystem
+from alikable.models import ChatReply, DesignSystem, RouteDecision
 
 
 @CrewBase
@@ -118,6 +118,13 @@ class Alikable():
             verbose=True
         )
 
+    @agent
+    def chat_agent(self) -> Agent:
+        return Agent(
+            config=self.agents_config['chat_agent'], # type: ignore[index]
+            verbose=True
+        )
+
     # ------------------------------------------------------------------- Tasks
 
     @task
@@ -203,6 +210,14 @@ class Alikable():
     def route_change_task(self) -> Task:
         return Task(
             config=self.tasks_config['route_change_task'], # type: ignore[index]
+            output_pydantic=RouteDecision,
+        )
+
+    @task
+    def chat_task(self) -> Task:
+        return Task(
+            config=self.tasks_config['chat_task'], # type: ignore[index]
+            output_pydantic=ChatReply,
         )
 
     # ------------------------------------------------------------------ Crews
@@ -247,3 +262,8 @@ class Alikable():
     def change_router_crew(self) -> Crew:
         """Decides which crew handles a change request"""
         return self._crew(self.route_change_task())
+
+    @crew
+    def chat_crew(self) -> Crew:
+        """Answers one chat message and decides what to do with it"""
+        return self._crew(self.chat_task())
