@@ -151,39 +151,57 @@ code_review_task:
 
 qa_task:
   description: >
-    Test the site like a real user. Open every page in the browser, click every link
-    and button, submit every form and watch the console for errors.
+    Test the built site. First run the Build Checker and report every error it
+    finds as a high severity bug. Then go through every page as a user would:
+    follow every link and button, submit every form and trace what the JavaScript
+    does, looking for broken links, missing elements, script errors and features
+    from the spec that are missing or do not work. You cannot open a browser yet,
+    so work from the files below and report only bugs you can point to in them.
 
     Site spec: {site_spec}
+
+    Site files: {site_files}
   expected_output: >
-    A list of bugs. For each: the page, steps to reproduce, what happened and what
-    should have happened. Say so if there are none.
+    Every bug found, each with its page, the steps to reproduce it, what happens,
+    what should happen and its severity. An empty list if there are none.
   agent: qa_tester
 
 consistency_audit_task:
   description: >
-    Compare the pages side by side and flag anything that breaks the design:
-    off-palette colors, one-off spacing or fonts, components styled differently on
-    different pages, and anything that contradicts the requirements.
+    Compare the pages side by side, and against the spec and the design, and flag
+    anything that breaks them: off-palette colors, one-off spacing or fonts,
+    components styled differently on different pages, and anything that
+    contradicts the requirements. Report real inconsistencies only, not matters of
+    taste, and give the exact change that would fix each one.
 
     Site spec: {site_spec}
+
+    Design: {design}
+
+    Site files: {site_files}
   expected_output: >
-    A list of problems, each with the page and the rule it breaks. Say so if there
-    are none.
+    Every inconsistency found, each with its page, the rule it breaks, what the site
+    does now, the change to make and its severity. An empty list if there are none.
   agent: consistency_auditor
 
 fix_task:
   description: >
-    Apply every fix from the QA and consistency reports, and this small user change
-    if one is given, making the smallest change that fixes each problem without
-    breaking anything else.
+    Fix this one problem in the built site with the smallest change that fixes it,
+    without breaking anything else. Change only what this problem needs. If the
+    files below show it is already fixed, it is not a real problem, or it cannot be
+    fixed in HTML, CSS and JavaScript, change nothing and say why. Load scripts only
+    from allowlisted CDN libraries and never add secrets.
 
-    User change: {change_request}
+    Problem: {issue}
+
+    Site spec: {site_spec}
+
+    Site files: {site_files}
   expected_output: >
-    The path and full contents of every file you changed, and the list of problems
-    each change resolves.
+    fixed with the path and complete new contents of every file you changed (paths
+    exactly as in the site files), or skipped with the reason. One line saying what
+    you changed.
   agent: fixer
-  context: [qa_task, consistency_audit_task]
 
 # ---------------------------------------------------------- Deploy Guide crew
 
@@ -234,6 +252,9 @@ chat_task:
     reviewers to run in the background (qa_tester, consistency_auditor,
     code_reviewer, spec_critic, design_critic) and the question for them.
     approve: only when the build is waiting for approval and the user approves it.
+    reject: only when the build is waiting for approval and the user wants it undone.
+    This restores the last approved build and drops every change since; if the user
+    only wants part of it changed, choose change instead.
     If background jobs have finished, summarize their results in your reply. If the
     user asks about progress, answer from the job list. Never say work is done while
     its job is still queued or running.

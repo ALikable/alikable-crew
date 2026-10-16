@@ -14,81 +14,50 @@ For each message the Chat Agent picks one action:
                planning -> design -> implementation -> polish
              after which the build waits for approval
   approve -> a deploy job writes DEPLOY.md
+  reject  -> a rollback job restores the last approved build (site_files.py)
 
-Change and deploy jobs run one at a time in the order they were sent, so two changes
-never edit the site at once. Check jobs only report, so they run in parallel.
+Before it runs, a change job saves a checkpoint of the build unless one is already
+kept, so the checkpoint is always the last approved build. Approving clears it.
+
+Change, deploy and rollback jobs run one at a time in the order they were sent, so
+two jobs never edit the site at once. Check jobs only report, so they run in parallel.
 
 Not built yet (placeholders below, marked TODO):
   - the intake flow, which makes the first build and then hands over to this chat
-  - the planning, implementation, polish and deploy guide crews
-Until then the chat reads whatever is in output/site_spec.json and output/design/.
+  - the planning, implementation and deploy guide crews
+Until then the chat reads whatever is in output/site_spec.json, output/design/ and
+output/site/.
 """
 
 import threading
 import uuid
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
 
 from crewai.flow.flow import Flow, listen, or_, router, start
-from pydantic import BaseModel, Field, PrivateAttr
+from pydantic import PrivateAttr
 
 from alikable.crew import Alikable
-from alikable.models import ChatReply, RouteDecision
-from alikable.phases import run_design_phase
+from alikable.flows.phases import run_design_phase
+from alikable.flows.polish import run_polish_phase
+from alikable.models import ChatReply, ChatResponse, ChatState, Job, PipelineState, RouteDecision, utc_now
+from alikable.site_files import clear_checkpoint, restore_checkpoint, save_checkpoint
 
 SITE_SPEC = Path("output/site_spec.json")
 DESIGN = Path("output/design/design.json")
 HISTORY_LIMIT = 20   # chat lines passed to the Chat Agent
 
 _check_runner = ThreadPoolExecutor(max_workers=3, thread_name_prefix="check")
-_build_runner = ThreadPoolExecutor(max_workers=1, thread_name_prefix="build")  # changes and deploys, one at a time
-
-
-def _now() -> datetime:
-    return datetime.now(timezone.utc)
+_build_runner = ThreadPoolExecutor(max_workers=1, thread_name_prefix="build")  # changes, deploys and rollbacks, one at a time
 
 
 def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8") if path.exists() else ""
 
 
-# ------------------------------------------------------------------ UI contract
-
-class Job(BaseModel):
-    """One background job, as the UI shows it."""
-
-    id: str = Field(default_factory=lambda: uuid.uuid4().hex[:8])
-    kind: Literal["check", "change", "deploy"]
-    title: str
-    status: Literal["queued", "running", "done", "failed"] = "queued"
-    step: str = ""      # what is running right now, e.g. "design crew"
-    result: str = ""
-    error: str = ""
-    created_at: datetime = Field(default_factory=_now)
-    updated_at: datetime = Field(default_factory=_now)
-
-
-class ChatResponse(BaseModel):
-    """Everything the UI needs after a message or a status refresh."""
-
-    session_id: str
-    reply: str = ""
-    awaiting_approval: bool = False
-    jobs: list[Job] = []
-
-
 # --------------------------------------------------------------- Change pipeline
-
-class PipelineState(BaseModel):
-    route: str = ""             # crew the change starts at
-    change_request: str = ""
-    site_spec: str = ""
-    design: str = ""
-    notes: list[str] = []       # one line per crew, becomes the job result
-
 
 class ChangePipelineFlow(Flow[PipelineState]):
     """Runs the crew a change was routed to, then every crew after it."""
@@ -139,10 +108,15 @@ class ChangePipelineFlow(Flow[PipelineState]):
     @listen(or_("polish", run_implementation))
     def run_polish(self):
         self._step("polish crew")
-        # TODO(polish crew): not built yet. Kick it off with site_spec, and with
-        # change_request only when route == "polish" (larger changes were already made
-        # by the crews above, so polish just re-checks them).
-        self.state.notes.append("Polish crew not built yet; skipped.")
+        report = run_polish_phase(
+            self.state.site_spec,
+            self.state.design,
+            # larger changes were already made by the crews above, so polish just re-checks them
+            change_request=self.state.change_request if self.state.route == "polish" else "",
+            max_rounds=self.state.polish_rounds,
+            on_step=self._step,
+        )
+        self.state.notes.append(report.summary())
 
 
 # ---------------------------------------------------------------------- Session
@@ -185,7 +159,7 @@ class ChatSession:
         with self._lock:
             for field, value in changes.items():
                 setattr(job, field, value)
-            job.updated_at = _now()
+            job.updated_at = utc_now()
 
     def jobs_for_chat(self) -> str:
         """Open jobs and new results, as text for the Chat Agent. New results count as reported."""
@@ -211,17 +185,6 @@ class ChatSession:
 
 # ------------------------------------------------------------------------- Chat
 
-class ChatState(BaseModel):
-    message: str = ""                # the user's latest message
-    reply: str = ""                  # what to show the user for this message
-    history: list[str] = []
-    action: str = ""                 # the Chat Agent's choice: reply, change, check or approve
-    change_request: str = ""         # the change, restated for the Change Router, then for its crew
-    route: str = ""                  # crew the change starts at
-    check_agents: list[str] = []     # reviewers to run in the background
-    check_question: str = ""
-
-
 class ChatFlow(Flow[ChatState]):
     """Answers one message per kickoff. The ChatSession keeps it between messages."""
 
@@ -241,7 +204,7 @@ class ChatFlow(Flow[ChatState]):
         decision = result.pydantic
         if not isinstance(decision, ChatReply):   # unstructured answer: treat it as a reply
             decision = ChatReply(action="reply", message=result.raw)
-        if decision.action == "approve" and not session.awaiting_approval:
+        if decision.action in ("approve", "reject") and not session.awaiting_approval:
             decision.action = "reply"             # nothing is waiting for approval
 
         self.state.action = decision.action
@@ -252,7 +215,7 @@ class ChatFlow(Flow[ChatState]):
         self.state.history += [f"User: {self.state.message}", f"Assistant: {decision.message}"]
 
     @router(chat)
-    def decide(self) -> Literal["reply", "change", "check", "approve"]:
+    def decide(self) -> Literal["reply", "change", "check", "approve", "reject"]:
         return self.state.action  # type: ignore[return-value]
 
     @listen("check")
@@ -291,6 +254,7 @@ class ChatFlow(Flow[ChatState]):
         session.awaiting_approval = False   # a new change replaces the build waiting for approval
 
         def work(job: Job) -> str:
+            save_checkpoint()
             pipeline = ChangePipelineFlow()
             pipeline._on_step = lambda step: session.update(job, step=step)
             pipeline.kickoff(inputs={"route": route, "change_request": request})
@@ -305,12 +269,25 @@ class ChatFlow(Flow[ChatState]):
         session.awaiting_approval = False
 
         def work(job: Job) -> str:
+            clear_checkpoint()   # this build is approved
             session.update(job, step="deploy guide crew")
             # TODO(deploy guide crew): not built yet. Kick it off with the current site
             # spec; it writes output/DEPLOY.md.
             return "Deploy Guide crew not built yet; DEPLOY.md was not written."
 
         session.start_job("deploy", "Deploy guide", work, _build_runner)
+
+    @listen("reject")
+    def start_rollback(self):
+        session: ChatSession = self._session
+        session.awaiting_approval = False
+
+        def work(job: Job) -> str:
+            if restore_checkpoint():
+                return "Restored the last approved build; every change since was undone."
+            return "There was no checkpoint to restore, so nothing changed."
+
+        session.start_job("rollback", "Undo changes since the last approval", work, _build_runner)
 
 
 def _run_check(agent_name: str, question: str) -> str:

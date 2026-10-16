@@ -10,9 +10,12 @@ in the same process. It is not a web API.
 |---|---|
 | `flows/change_router.py` | Built. `run_chat()`, `chat_status()`, background jobs, approval state |
 | Chat Agent, Change Router (`crew.py`, YAML) | Built |
-| Design crew + review loop (`phases.py`) | Built |
+| Design crew + review loop (`flows/phases.py`) | Built |
+| Polish & Iterate loop (`flows/polish.py`) | Built. QA Tester ‖ Consistency Auditor → Fixer one item at a time, `POLISH_ROUNDS` (default 1) rounds of fixes then a report-only check; writes `output/polish_report.json` |
+| Build Checker tool (`tools/build_checker.py`) | Built. Static: HTML, local links, CDN allowlist, CSS braces, `node --check`, JSON, secrets |
+| Rollback (`site_files.py`) | Built. A fix that adds build errors is undone at once; a change job checkpoints the last approved build and **reject** restores it |
 | Intake flow (first build) | Not built |
-| Planning, Implementation, Polish, Deploy Guide crews | Defined in `crew.py`, not built. `TODO(<crew>)` placeholders in the change pipeline |
+| Planning, Implementation, Deploy Guide crews | Defined in `crew.py`, not built. `TODO(<crew>)` placeholders in the change pipeline |
 | Gradio UI | Not built (this plan) |
 
 ## The contract the UI builds on
@@ -30,8 +33,8 @@ Both return a `ChatResponse`:
 |---|---|
 | `session_id` | Keep in `gr.State`; pass back on every call |
 | `reply` | Append to the chat as the assistant message (empty from `chat_status`) |
-| `awaiting_approval` | Show the approval banner and the Approve button (HITL #3) |
-| `jobs: list[Job]` | Jobs panel: `kind`, `title`, `status`, `step`, `result`, `error`, `updated_at` |
+| `awaiting_approval` | Show the approval banner with Approve and Reject buttons (HITL #3) |
+| `jobs: list[Job]` | Jobs panel: `kind` (check, change, deploy, rollback), `title`, `status`, `step`, `result`, `error`, `updated_at` |
 
 `run_chat` returns after the Chat Agent answers (seconds). Crews run as background jobs,
 so the UI never waits on them. It polls `chat_status` to show their progress.
@@ -105,8 +108,14 @@ def send(text, history, session_id):
 
   It should reuse the body of `ChatFlow.start_deploy`, with the same "only when
   awaiting approval" guard.
+- Reject button: same idea, a direct `reject(session_id)` that reuses
+  `ChatFlow.start_rollback`. Saying "undo that" in the chat already works through the
+  Chat Agent's `reject` action. Rejecting undoes every change since the last approval,
+  not only the latest one.
+- Show `output/polish_report.json` with the banner: fixes (fixed, skipped, reverted,
+  failed), the build check, and the bugs and suggestions still open.
 - Describing a change in the chat while the banner is up already works: a new change
-  clears `awaiting_approval`.
+  clears `awaiting_approval` and builds on top of the unapproved build.
 
 ### Step 4. Intake flow and HITL #1 / #2 in the UI
 
@@ -150,10 +159,20 @@ In rough order; the UI steps above note which ones they depend on.
    the UI (see Step 4). Fix `crew.py:21`: `knowledge_source=` should be
    `knowledge_sources=`, so the interviewer currently gets no design-practices
    knowledge. Then replace `TODO(planning crew)` in `ChangePipelineFlow.run_planning`.
-3. **Implementation crew**: no task writes files yet, and there are no tools (MCP
-   Filesystem, Build Checker) and no parallel Page Builders. Replace
-   `TODO(implementation crew)`.
-4. **Polish crew**: needs MCP Playwright for the QA Tester. Replace `TODO(polish crew)`.
+3. **Implementation crew**: no task writes files yet, and there are no parallel Page
+   Builders. Replace `TODO(implementation crew)`.
+   - **Assumption (agreed for now): the build lands in `output/site/`** as plain HTML,
+     CSS and JS files, with `index.html` at the top. The polish loop, the Build Checker
+     and the checkpoint all read from there (`site_files.SITE_DIR`).
+   - Return files as `FileChange` objects and write them with
+     `site_files.apply_changes()`, as the Fixer does, rather than giving agents a
+     file-write tool. That keeps writes inside `output/site/` and undoable.
+   - Give the Code Reviewer the `BuildCheckerTool` too.
+   - Then remove the stand-in in `PolishFlow.load_build`, which copies the design
+     layouts into `output/site/` when it has no pages.
+4. **Polish crew**: built, but the QA Tester reads the code instead of using the site:
+   it needs MCP Playwright to click through pages and read console errors. The Build
+   Checker is static only, so runtime errors are not caught yet.
 5. **Deploy Guide crew**: needs the Release Builder tool (package + smoke test) to
    produce `site.zip`. Replace `TODO(deploy guide crew)` in `ChatFlow.start_deploy`.
 6. **`approve(session_id)`** in `change_router.py` (Step 3).

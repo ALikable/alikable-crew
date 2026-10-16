@@ -2,7 +2,8 @@ from crewai import Agent, Crew, Process, Task
 from crewai.project import CrewBase, agent, crew, task
 from crewai.agents.agent_builder.base_agent import BaseAgent
 from crewai.knowledge.source.text_file_knowledge_source import TextFileKnowledgeSource
-from alikable.models import ChatReply, DesignSystem, RouteDecision
+from alikable.models import AuditReport, ChatReply, DesignSystem, FixResult, QAReport, RouteDecision
+from alikable.tools.build_checker import BuildCheckerTool
 
 
 @CrewBase
@@ -87,6 +88,7 @@ class Alikable():
     def qa_tester(self) -> Agent:
         return Agent(
             config=self.agents_config['qa_tester'], # type: ignore[index]
+            tools=[BuildCheckerTool()],
             verbose=True
         )
 
@@ -186,18 +188,21 @@ class Alikable():
     def qa_task(self) -> Task:
         return Task(
             config=self.tasks_config['qa_task'], # type: ignore[index]
+            output_pydantic=QAReport,
         )
 
     @task
     def consistency_audit_task(self) -> Task:
         return Task(
             config=self.tasks_config['consistency_audit_task'], # type: ignore[index]
+            output_pydantic=AuditReport,
         )
 
     @task
     def fix_task(self) -> Task:
         return Task(
             config=self.tasks_config['fix_task'], # type: ignore[index]
+            output_pydantic=FixResult,
         )
 
     @task
@@ -248,10 +253,23 @@ class Alikable():
         return self._crew(self.api_integration_task(), self.page_build_task(),
                           self.code_review_task())
 
+    # Polish & Iterate: flows/polish.py runs QA and the audit in parallel, then the
+    # Fixer once per bug or suggestion, so each is its own crew.
+
     @crew
-    def polish_crew(self) -> Crew:
-        """Finds and fixes bugs and inconsistencies, and applies small changes"""
-        return self._crew(self.qa_task(), self.consistency_audit_task(), self.fix_task())
+    def qa_crew(self) -> Crew:
+        """Finds bugs in the built site"""
+        return self._crew(self.qa_task())
+
+    @crew
+    def audit_crew(self) -> Crew:
+        """Finds where the built site drifts from the spec and design"""
+        return self._crew(self.consistency_audit_task())
+
+    @crew
+    def fix_crew(self) -> Crew:
+        """Fixes one bug, inconsistency or small user change"""
+        return self._crew(self.fix_task())
 
     @crew
     def deploy_crew(self) -> Crew:
