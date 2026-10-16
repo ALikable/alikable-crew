@@ -64,30 +64,43 @@ design_task:
     the user can edit it by hand.
 
     Site spec: {site_spec}
+
+    Feedback from the Design Critic on the previous round (fix exactly these
+    points and keep everything else; "None" means this is the first round):
+    {feedback}
   expected_output: >
-    Markdown with four sections: components and what each is for; a stylesheet of
-    design tokens and styles with a comment explaining each decision; the structure
-    (pages, content, API endpoints per page, components used where); and a layout
-    for every page.
+    The design as separate parts: which template you started from and why; the
+    complete stylesheet (styles.css) with design tokens and a comment on each
+    decision; an HTML snippet for every component; a full HTML layout for every
+    page in the site spec that links styles.css and uses the component classes;
+    and design notes for the Page Builder.
   agent: design_system_designer
   guardrail: >
     The stylesheet is valid CSS and every page in the site spec has a layout.
-  output_file: output/design.md
+  output_file: output/design/design.json
+
 
 design_review_task:
   description: >
-    Review the design against the spec. Every component must be correct and needed,
-    the stylesheet must follow the requirements and plan and match the preexisting
-    design templates, and every page must have a layout.
+    Check the design against the site spec and the design templates using this
+    checklist. Mark each check PASS or FAIL with a one-line reason.
+    1. Accent color: matches the spec's style and brand_colors
+       (for example, "blue accent" means the accent must be blue).
+    2. Fonts: match the spec's fonts (a sans-serif request means no serif fonts).
+    3. Theme: light or dark exactly as the spec says.
+    4. Pages: every page in the spec has a layout.
+    5. Look: no emoji used as icons and no purple-to-blue gradients.
+    Only these 5 checks decide approval. You may list other small suggestions
+    under "Optional", but they never make the answer CHANGES NEEDED.
 
     Site spec: {site_spec}
   expected_output: >
-    The single word APPROVED, or a short list of specific changes, each with the
-    reasoning behind it.
+    First line: APPROVED only if all 5 checks PASS, otherwise CHANGES NEEDED.
+    Then the 5 checks, each PASS or FAIL with a one-line reason.
+    Then one concrete fix for each FAIL, and any optional suggestions.
   agent: design_critic
   context: [design_task]
-
-# ---------------------------------------------------------- Implementation crew
+  # ---------------------------------------------------------- Implementation crew
 
 api_integration_task:
   description: >

@@ -1,0 +1,54 @@
+{
+    "app_name": "TaskFlow",
+    "purpose": "Let users log in, see their tasks, add new tasks and delete tasks.",
+    "audience": "Small teams using an existing task manager API; mostly desktop, sometimes phone.",
+    "api": {
+      "base_url": "http://localhost:8080",
+      "auth": "Bearer token returned by POST /api/auth/login, sent as Authorization: Bearer <token>",
+      "use_mock_data": true,
+      "endpoints": [
+        {"method": "POST", "path": "/api/auth/login", "needs_login": false,
+         "request": {"username": "string", "password": "string"}, "response": {"token": "string"}},
+        {"method": "GET", "path": "/api/tasks", "needs_login": true,
+         "response": [{"id": "number", "title": "string", "done": "boolean"}]},
+        {"method": "POST", "path": "/api/tasks", "needs_login": true,
+         "request": {"title": "string"}, "response": {"id": "number", "title": "string", "done": "boolean"}},
+        {"method": "DELETE", "path": "/api/tasks/{id}", "needs_login": true, "response": "204 No Content"}
+      ]
+    },
+    "pages": [
+      {
+        "name": "Login",
+        "file": "index.html",
+        "purpose": "Sign in to reach the task list.",
+        "content": ["App name and one-line description", "Username field", "Password field", "Sign in button", "Error message area"],
+        "features": ["Validate both fields are filled before sending", "Show an error on failed login", "On success store the token for the session and go to the Tasks page"],
+        "endpoints": ["POST /api/auth/login"]
+      },
+      {
+        "name": "Tasks",
+        "file": "tasks.html",
+        "purpose": "See, add and delete your tasks.",
+        "content": ["Page title 'My tasks'", "Add task form with a title field and Add button", "Task list showing title and done status", "Delete button on each task", "Logout button"],
+        "features": ["Loading, empty, error and success states for the list", "Done is shown read-only because there is no update endpoint", "Confirm before deleting", "Refresh the list after add and delete", "Redirect to login when there is no token or the API returns 401"],
+        "endpoints": ["GET /api/tasks", "POST /api/tasks", "DELETE /api/tasks/{id}"]
+      }
+    ],
+    "style": {
+      "look_and_feel": "Clean and professional, light theme, calm blue accent.",
+      "brand_colors": [],
+      "fonts": "Any clean sans-serif"
+    },
+    "qualities": [
+      {"name": "Intuitive", "how": "One main action per page, clear labels, helpful empty state."},
+      {"name": "Responsive", "how": "Mobile-first layout; the task list stays readable on a phone."},
+      {"name": "Accessible", "how": "Labels on every input, 4.5:1 contrast, visible focus outlines, keyboard usable."}
+    ],
+    "notes": ["Front end only: HTML, CSS and JavaScript, no build step.", "No secrets in client code."],
+    "build_plan": [
+      "1. Shared stylesheet (styles.css) from the design tokens",
+      "2. API module (js/api.js) with mock data, switchable to the real API by one config value",
+      "3. Login page (index.html)",
+      "4. Tasks page (tasks.html)"
+    ]
+  }

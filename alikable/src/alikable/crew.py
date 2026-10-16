@@ -2,6 +2,7 @@ from crewai import Agent, Crew, Process, Task
 from crewai.project import CrewBase, agent, crew, task
 from crewai.agents.agent_builder.base_agent import BaseAgent
 from crewai.knowledge.source.text_file_knowledge_source import TextFileKnowledgeSource
+from alikable.models import DesignSystem
 
 
 @CrewBase
@@ -16,8 +17,11 @@ class Alikable():
     @agent
     def discovery_interviewer(self) -> Agent:
         return Agent(
-            config=self.agents_config['discovery_interviewer'], # type: ignore[index]
-            verbose=True
+            config=self.agents_config["discovery_interviewer"],
+            knowledge_source=[
+                TextFileKnowledgeSource(file_paths=["design_practices.txt"])
+            ],
+            verbose=True,
         )
 
     @agent
@@ -45,6 +49,7 @@ class Alikable():
     def design_system_designer(self) -> Agent:
         return Agent(
             config=self.agents_config['design_system_designer'], # type: ignore[index]
+            knowledge_sources=[TextFileKnowledgeSource(file_paths=["design_templates.txt"])],
             verbose=True
         )
 
@@ -52,6 +57,8 @@ class Alikable():
     def design_critic(self) -> Agent:
         return Agent(
             config=self.agents_config['design_critic'], # type: ignore[index]
+            knowledge_sources=[TextFileKnowledgeSource(file_paths=["design_templates.txt"])],
+            llm="openai/gpt-5.6-luna",
             verbose=True
         )
 
@@ -141,6 +148,7 @@ class Alikable():
     def design_task(self) -> Task:
         return Task(
             config=self.tasks_config['design_task'], # type: ignore[index]
+            output_pydantic=DesignSystem,
         )
 
     @task
