@@ -163,39 +163,57 @@ code_review_task:
 
 qa_task:
   description: >
-    Test the site like a real user. Open every page in the browser, click every link
-    and button, submit every form and watch the console for errors.
+    Test the built site. First run the Build Checker and report every error it
+    finds as a high severity bug. Then go through every page as a user would:
+    follow every link and button, submit every form and trace what the JavaScript
+    does, looking for broken links, missing elements, script errors and features
+    from the spec that are missing or do not work. You cannot open a browser yet,
+    so work from the files below and report only bugs you can point to in them.
 
     Site spec: {site_spec}
+
+    Site files: {site_files}
   expected_output: >
-    A list of bugs. For each: the page, steps to reproduce, what happened and what
-    should have happened. Say so if there are none.
+    Every bug found, each with its page, the steps to reproduce it, what happens,
+    what should happen and its severity. An empty list if there are none.
   agent: qa_tester
 
 consistency_audit_task:
   description: >
-    Compare the pages side by side and flag anything that breaks the design:
-    off-palette colors, one-off spacing or fonts, components styled differently on
-    different pages, and anything that contradicts the requirements.
+    Compare the pages side by side, and against the spec and the design, and flag
+    anything that breaks them: off-palette colors, one-off spacing or fonts,
+    components styled differently on different pages, and anything that
+    contradicts the requirements. Report real inconsistencies only, not matters of
+    taste, and give the exact change that would fix each one.
 
     Site spec: {site_spec}
+
+    Design: {design}
+
+    Site files: {site_files}
   expected_output: >
-    A list of problems, each with the page and the rule it breaks. Say so if there
-    are none.
+    Every inconsistency found, each with its page, the rule it breaks, what the site
+    does now, the change to make and its severity. An empty list if there are none.
   agent: consistency_auditor
 
 fix_task:
   description: >
-    Apply every fix from the QA and consistency reports, and this small user change
-    if one is given, making the smallest change that fixes each problem without
-    breaking anything else.
+    Fix this one problem in the built site with the smallest change that fixes it,
+    without breaking anything else. Change only what this problem needs. If the
+    files below show it is already fixed, it is not a real problem, or it cannot be
+    fixed in HTML, CSS and JavaScript, change nothing and say why. Load scripts only
+    from allowlisted CDN libraries and never add secrets.
 
-    User change: {change_request}
+    Problem: {issue}
+
+    Site spec: {site_spec}
+
+    Site files: {site_files}
   expected_output: >
-    The path and full contents of every file you changed, and the list of problems
-    each change resolves.
+    fixed with the path and complete new contents of every file you changed (paths
+    exactly as in the site files), or skipped with the reason. One line saying what
+    you changed.
   agent: fixer
-  context: [qa_task, consistency_audit_task]
 
 # ---------------------------------------------------------- Deploy Guide crew
 
@@ -220,13 +238,49 @@ deploy_guide_task:
 route_change_task:
   description: >
     Decide which crew handles this change with the least rework: small fixes go to
-    polish, style changes go to design, new pages or features go to planning. If the
-    request is too vague to route, ask the user one clarifying question instead.
+    polish, behavior or code changes that keep the spec and design go to
+    implementation, style changes go to design, new pages or features go to
+    planning. If the request is too vague to route, choose clarify and ask the user
+    one clarifying question instead.
 
     Change request: {change_request}
 
     Site spec: {site_spec}
   expected_output: >
-    One line, "<crew>: <the request restated clearly for that crew>", where <crew>
-    is polish, design or planning. Or a single clarifying question.
+    The crew (planning, design, implementation, polish or clarify) and the request
+    restated clearly for that crew, or the clarifying question.
   agent: change_router
+
+# -------------------------------------------------------------------- Main chat
+
+chat_task:
+  description: >
+    Handle the user's latest message in the project chat by choosing one action.
+    reply: a question or conversation about the project. Answer it from the site
+    spec, the conversation and any finished background checks.
+    change: the user wants the site changed. Restate the change clearly and
+    completely for the Change Router, and tell the user it is on its way.
+    check: the user wants something investigated without changing it. Pick the
+    reviewers to run in the background (qa_tester, consistency_auditor,
+    code_reviewer, spec_critic, design_critic) and the question for them.
+    approve: only when the build is waiting for approval and the user approves it.
+    reject: only when the build is waiting for approval and the user wants it undone.
+    This restores the last approved build and drops every change since; if the user
+    only wants part of it changed, choose change instead.
+    If background jobs have finished, summarize their results in your reply. If the
+    user asks about progress, answer from the job list. Never say work is done while
+    its job is still queued or running.
+
+    Waiting for approval: {awaiting_approval}
+
+    Background jobs: {jobs}
+
+    Conversation so far: {history}
+
+    Site spec: {site_spec}
+
+    Latest message: {message}
+  expected_output: >
+    The action, the reply to show the user, and for change or check the details
+    the next step needs.
+  agent: chat_agent
