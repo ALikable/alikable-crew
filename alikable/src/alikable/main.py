@@ -6,10 +6,11 @@ from alikable.crew import Alikable
 
 warnings.filterwarnings("ignore", category=SyntaxWarning, module="pysbd")
 
-# Sample intake form answers for the Planning crew.
+# Sample interview summary for the Planning crew. The UI collects real ones: uv run ui
 INPUTS = {
-    'intake_form': 'Task manager UI. Users log in, see their tasks, add and delete them. '
-                   'Endpoints: POST /api/auth/login, GET /api/tasks, POST /api/tasks, DELETE /api/tasks/:id.'
+    'interview_summary': 'Task manager UI. Users log in, see their tasks, add and delete them. '
+                         'Endpoints: POST /api/auth/login, GET /api/tasks, POST /api/tasks, DELETE /api/tasks/:id.',
+    'feedback': 'None',
 }
 
 
@@ -69,7 +70,8 @@ def run_with_trigger():
 
     inputs = {
         "crewai_trigger_payload": trigger_payload,
-        "intake_form": ""
+        "interview_summary": "",
+        "feedback": "None",
     }
 
     try:

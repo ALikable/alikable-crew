@@ -2,7 +2,7 @@ from crewai import Agent, Crew, Process, Task
 from crewai.project import CrewBase, agent, crew, task
 from crewai.agents.agent_builder.base_agent import BaseAgent
 from crewai.knowledge.source.text_file_knowledge_source import TextFileKnowledgeSource
-from alikable.models import DesignSystem
+from alikable.models import DesignSystem, Interview
 
 
 @CrewBase
@@ -18,7 +18,7 @@ class Alikable():
     def discovery_interviewer(self) -> Agent:
         return Agent(
             config=self.agents_config["discovery_interviewer"],
-            knowledge_source=[
+            knowledge_sources=[
                 TextFileKnowledgeSource(file_paths=["design_practices.txt"])
             ],
             verbose=True,
@@ -124,6 +124,7 @@ class Alikable():
     def interview_task(self) -> Task:
         return Task(
             config=self.tasks_config['interview_task'], # type: ignore[index]
+            output_pydantic=Interview,
         )
 
     @task
@@ -217,10 +218,15 @@ class Alikable():
         )
 
     @crew
+    def interview_crew(self) -> Crew:
+        """Runs one round of the Discovery Interviewer"""
+        return self._crew(self.interview_task())
+
+    @crew
     def planning_crew(self) -> Crew:
-        """Interviews the user and writes site_spec.json"""
-        return self._crew(self.interview_task(), self.spec_writing_task(),
-                          self.copywriting_task(), self.spec_review_task())
+        """Writes site_spec.json from the interview summary"""
+        return self._crew(self.spec_writing_task(), self.copywriting_task(),
+                          self.spec_review_task())
 
     @crew
     def design_crew(self) -> Crew:

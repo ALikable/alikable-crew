@@ -39,6 +39,13 @@ This command initializes the alikable Crew, assembling the agents and assigning 
 
 This example, unmodified, will run the create a `report.md` file with the output of a research on LLMs in the root folder.
 
+To use the Gradio UI (intake form, input guardrail, Discovery Interviewer Q&A, then the Planning crew
+writes `output/site_spec.json`), run this from the project root and open http://127.0.0.1:7860:
+
+```bash
+$ uv run ui
+```
+
 ## Understanding Your Crew
 
 The alikable Crew is composed of multiple AI agents, each with unique roles, goals, and tools. These agents collaborate on a series of tasks, defined in `config/tasks.yaml`, leveraging their collective skills to achieve complex objectives. The `config/agents.yaml` file outlines the capabilities and configurations of each agent in your crew.

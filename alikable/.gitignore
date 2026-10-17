@@ -4,3 +4,4 @@ __pycache__/
 .crewai/
 .venv
 output/
+.gradio/

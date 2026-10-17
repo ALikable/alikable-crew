@@ -5,6 +5,37 @@ Shapes (Pydantic models) for structured task outputs.
 from pydantic import BaseModel, Field
 
 
+class IntakeForm(BaseModel):
+    """The intake form answers. The input guardrail checks them before any agent runs."""
+
+    description: str
+    audience: str = ""
+    look_and_feel: str = ""
+    qualities: list[str] = []
+    api_base_url: str = ""  # empty when there is no backend yet
+    endpoints: list[str] = []  # "METHOD /path", one per item
+
+
+class Question(BaseModel):
+    """One follow-up question from the Discovery Interviewer."""
+
+    question: str = Field(description="A short, specific question")
+    options: list[str] = Field(
+        description="2 to 4 likely answers, the recommended one first; the user can also type their own"
+    )
+
+
+class Interview(BaseModel):
+    """One round of the Discovery Interviewer."""
+
+    questions: list[Question] = Field(
+        description="This round's questions, at most 4; empty when nothing important is unclear"
+    )
+    summary: str = Field(
+        description="The requirements so far under the headings purpose, audience, pages, look and feel, qualities, API details, open questions"
+    )
+
+
 class PageLayout(BaseModel):
     """One page of the site, as an HTML skeleton."""
 

@@ -1,18 +1,24 @@
 """
-Design phase with its review loop (max 3 rounds).
+Phases that run a crew more than once.
 
-The crew runs its tasks once. This loop runs it again with the
-critic's changes as {feedback} until the critic says APPROVED.
-At the end, each part of the design is saved as its own file.
+Interview: one Discovery Interviewer round per batch of user answers.
+Planning (max 2 rounds) and Design (max 3 rounds): the crew runs its tasks once,
+and the review loop runs it again with the critic's changes as {feedback} until
+the critic says APPROVED. At the end, each part of the design is saved as its own file.
 """
 
+from collections.abc import Callable
 from pathlib import Path
 
+from crewai import Crew
+from crewai.crews.crew_output import CrewOutput
+
 from alikable.crew import Alikable
-from alikable.models import DesignSystem                 
+from alikable.models import DesignSystem, Interview
 
 REVIEW_LOG = Path("output/design_review_log.md")
-DESIGN_DIR = Path("output/design")                       
+SPEC_REVIEW_LOG = Path("output/spec_review_log.md")
+DESIGN_DIR = Path("output/design")
 
 
 def is_approved(review: str) -> bool:
@@ -47,39 +53,60 @@ def save_design_files(design: DesignSystem | None) -> None:
 
     print(f"Design files saved to: {DESIGN_DIR}/  (open index.html in a browser)")
 
-def run_design_phase(site_spec: str, max_rounds: int = 3) -> tuple[str, bool]:
-    """Returns (design, approved)."""
+
+def run_review_loop(name: str, make_crew: Callable[[], Crew], inputs: dict,
+                    max_rounds: int, log_path: Path) -> tuple[CrewOutput, bool]:
+    """Runs a writer/critic crew (critic last) until APPROVED. Returns (last result, approved)."""
     feedback = "None"   # first round: no feedback yet
-    design = ""
-    structured = None                                     
-    log = "# Design review log\n"
+    log = f"# {name} review log\n"
 
     for round_no in range(1, max_rounds + 1):
-        print(f"\n===== DESIGN ROUND {round_no} of {max_rounds} =====\n")
+        print(f"\n===== {name.upper()} ROUND {round_no} of {max_rounds} =====\n")
 
-        result = Alikable().design_crew().kickoff(
-            inputs={"site_spec": site_spec, "feedback": feedback}
-        )
-        design = result.tasks_output[0].raw              # designer's output (as JSON text)
-        structured = result.tasks_output[0].pydantic     # NEW: the same output as a DesignSystem object
-        review = result.tasks_output[1].raw              # critic's answer
+        result = make_crew().kickoff(inputs={**inputs, "feedback": feedback})
+        review = result.tasks_output[-1].raw             # critic's answer
 
         # Show and record what the critic said this round
         print(f"\n----- CRITIC, ROUND {round_no} -----\n{review}\n")
         log += f"\n## Round {round_no}\n\n{review}\n"
 
         if is_approved(review):
-            print(f"Design APPROVED in round {round_no}.")
-            REVIEW_LOG.write_text(log, encoding="utf-8")
-            save_design_files(structured)                 
-            return design, True
+            print(f"{name} APPROVED in round {round_no}.")
+            break
 
         feedback = review   # critic's changes go into the next round
+    else:
+        print(f"Not approved after {max_rounds} rounds; using the last {name.lower()}.")
 
-    print(f"Not approved after {max_rounds} rounds; using the last design.")
-    REVIEW_LOG.write_text(log, encoding="utf-8")
-    save_design_files(structured)                         
-    return design, False
+    log_path.write_text(log, encoding="utf-8")
+    return result, is_approved(review)
+
+
+def run_interview(intake_form: str, answers: str) -> Interview:
+    """One interview round: the questions to ask next (none when done) and the summary so far."""
+    result = Alikable().interview_crew().kickoff(
+        inputs={"intake_form": intake_form, "answers": answers}
+    )
+    return result.pydantic or Interview(questions=[], summary=result.raw)   # unstructured: treat as done
+
+
+def run_planning_phase(interview_summary: str, max_rounds: int = 2) -> tuple[str, bool]:
+    """Returns (site_spec, approved)."""
+    result, approved = run_review_loop(
+        "Spec", lambda: Alikable().planning_crew(), {"interview_summary": interview_summary},
+        max_rounds, SPEC_REVIEW_LOG,
+    )
+    return result.tasks_output[1].raw, approved       # Copywriter's output is the complete spec
+
+
+def run_design_phase(site_spec: str, max_rounds: int = 3) -> tuple[str, bool]:
+    """Returns (design, approved)."""
+    result, approved = run_review_loop(
+        "Design", lambda: Alikable().design_crew(), {"site_spec": site_spec},
+        max_rounds, REVIEW_LOG,
+    )
+    save_design_files(result.tasks_output[0].pydantic)  # the designer's output as a DesignSystem
+    return result.tasks_output[0].raw, approved          # designer's output (as JSON text)
 
 
 if __name__ == "__main__":

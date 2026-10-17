@@ -7,18 +7,23 @@
 
 interview_task:
   description: >
-    Read the intake form answers below, then ask the user follow-up questions
-    until nothing important is unclear: purpose, audience, pages, look and feel,
-    the software qualities they care about, and whether the app must call an
-    existing API (base URL, endpoints, request and response shapes, auth method).
+    Read the intake form and the answers so far, then decide what is still
+    unclear: purpose, audience, pages, look and feel, the software qualities the
+    user cares about, and whether the app must call an existing API (base URL,
+    endpoints, request and response shapes, auth method).
+    Ask at most 4 short questions, never one that is already answered, each with
+    2 to 4 likely answers to pick from, the one you recommend first and marked
+    "(Recommended)". Ask no questions once nothing important is unclear.
     Never ask for secrets. Only front-end work in HTML, CSS and JavaScript is in scope.
 
     Intake form: {intake_form}
+
+    Answers so far ("None" means this is the first round): {answers}
   expected_output: >
-    A summary of the user's requirements under these headings: purpose, audience,
-    pages, look and feel, qualities, API details, open questions.
+    This round's questions (none when the interview is done) and a summary of the
+    user's requirements under these headings: purpose, audience, pages, look and
+    feel, qualities, API details, open questions.
   agent: discovery_interviewer
-  human_input: true
 
 spec_writing_task:
   description: >
@@ -26,10 +31,15 @@ spec_writing_task:
     page list what is on it, its features and the API endpoints it uses. Record the
     overall style, the qualities the user picked and how to implement them, and any
     other notes. End with an ordered build plan.
+
+    Interview summary: {interview_summary}
+
+    Feedback from the Spec Critic on the previous round (fix exactly these
+    points and keep everything else; "None" means this is the first round):
+    {feedback}
   expected_output: >
     Valid JSON only, without '```'.
   agent: spec_writer
-  context: [interview_task]
   output_file: output/site_spec.json
 
 copywriting_task:
@@ -49,11 +59,13 @@ spec_review_task:
     style choice must trace back to something the user said, nothing they asked for
     may be missing, and the plan must be buildable as a static HTML, CSS and
     JavaScript site.
+
+    Interview summary: {interview_summary}
   expected_output: >
     The single word APPROVED, or a numbered list of concrete fixes, each naming the
     part of the spec it applies to.
   agent: spec_critic
-  context: [interview_task, copywriting_task]
+  context: [copywriting_task]
 
 # ------------------------------------------------------------------ Design crew
 
