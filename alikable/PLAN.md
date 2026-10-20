@@ -14,9 +14,10 @@ in the same process. It is not a web API.
 | Polish & Iterate loop (`flows/polish.py`) | Built. QA Tester ‖ Consistency Auditor → Fixer one item at a time, `POLISH_ROUNDS` (default 1) rounds of fixes then a report-only check; writes `output/polish_report.json` |
 | Build Checker tool (`tools/build_checker.py`) | Built. Static: HTML, local links, CDN allowlist, CSS braces, `node --check`, JSON, secrets |
 | Rollback (`site_files.py`) | Built. A fix that adds build errors is undone at once; a change job checkpoints the last approved build and **reject** restores it |
-| Intake flow (first build) | Not built |
-| Planning, Implementation, Deploy Guide crews | Defined in `crew.py`, not built. `TODO(<crew>)` placeholders in the change pipeline |
-| Gradio UI | Not built (this plan) |
+| Intake (`app.py`, `guardrails.py`) | Partly built. `uv run ui`: intake form → input guardrail → Discovery Interviewer rounds (multiple choice, max 3) → Planning crew writes `output/site_spec.json`. Stops there: no HITL #1, no design → build, no hand-over to the chat |
+| Planning crew + review loop (`flows/phases.py`) | Built (`run_interview`, `run_planning_phase`, max 2 rounds). Not yet called by the change pipeline: `TODO(planning crew)` in `ChangePipelineFlow.run_planning` |
+| Implementation, Deploy Guide crews | Defined in `crew.py`, not built. `TODO(<crew>)` placeholders in the change pipeline |
+| Gradio UI | Intake screen built (`src/alikable/app.py`). Chat, jobs and approval panels not built (this plan) |
 
 ## The contract the UI builds on
 
@@ -63,8 +64,8 @@ so the UI never waits on them. It polls `chat_status` to show their progress.
 
 ### Step 1. Chat panel (works with today's code)
 
-- `uv add gradio`; add `ui = "alikable.ui.app:main"` to `[project.scripts]`.
-- New `src/alikable/ui/app.py` with a `gr.Blocks` app:
+- Gradio and the `ui` script (`alikable.app:main`) already exist. Add the chat to the
+  existing `gr.Blocks` in `src/alikable/app.py`, shown once the intake screen is done (Step 4):
   - `gr.Chatbot` (messages format), `gr.Textbox` + Send button, `gr.State` for `session_id`.
   - Send handler: call `run_chat(text, session_id)`, append the user and assistant
     messages, store `response.session_id`, and update the jobs panel and banner from
@@ -122,16 +123,12 @@ def send(text, history, session_id):
 The first build happens before the chat, so the UI needs a first screen and two more
 approval gates.
 
-- Intake form screen (`gr.Column` of fields with the predetermined questions), shown
-  until a site spec exists, then replaced by the chat.
-- Input guardrail on submit: front-end only (HTML/CSS/JS), no secrets.
-- **Discovery interview through the UI.** `interview_task` has `human_input: true`,
-  which reads from the terminal and blocks inside the crew. In the UI this would hang
-  the job. Options:
-  1. Run the interview as chat turns: the Discovery Interviewer asks one question per
-     `run_chat` call until it has enough, then the planning job starts. (Recommended:
-     reuses the chat panel.)
-  2. Collect all follow-up answers in the intake form and drop `human_input`.
+- **Done** (`app.py`): the intake form screen, the input guardrail (`guardrails.py`:
+  front end only, endpoints as method + path, secrets removed), and the Discovery
+  interview as rounds of multiple-choice questions on screen (`human_input` was dropped).
+  Today the screen ends by showing `site_spec.json`.
+- Still to do: after the spec is written, show the spec gate below instead of ending,
+  then replace the intake screen with the chat.
 - Generalize the approval state so one banner serves all three gates:
   `awaiting_approval: bool` → `awaiting: Literal["spec", "design", "build"] | None`.
   - Spec gate (HITL #1): show `site_spec.json`; Approve or describe edits → planning.
@@ -155,10 +152,11 @@ In rough order; the UI steps above note which ones they depend on.
 1. **Intake flow** (Step 4): intake form → input guardrail → planning → HITL #1 →
    design → HITL #2 → implementation → polish → HITL #3 → deploy, as a Flow that reuses
    the change pipeline's crew steps and ends in a `ChatSession`.
-2. **Planning crew** (Steps 4 and changes): the interview cannot use `human_input` under
-   the UI (see Step 4). Fix `crew.py:21`: `knowledge_source=` should be
-   `knowledge_sources=`, so the interviewer currently gets no design-practices
-   knowledge. Then replace `TODO(planning crew)` in `ChangePipelineFlow.run_planning`.
+2. **Planning crew in the change pipeline**: the crew and `run_planning_phase()` are
+   built (and the `knowledge_sources` typo is fixed). Replace `TODO(planning crew)` in
+   `ChangePipelineFlow.run_planning` with a call to it. It takes an interview summary,
+   not a change request, so pass the current spec plus the change as the summary,
+   then reload `site_spec` from `SITE_SPEC`.
 3. **Implementation crew**: no task writes files yet, and there are no parallel Page
    Builders. Replace `TODO(implementation crew)`.
    - **Assumption (agreed for now): the build lands in `output/site/`** as plain HTML,
