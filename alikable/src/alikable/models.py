@@ -23,11 +23,19 @@ class IntakeForm(BaseModel):
     endpoints: list[str] = []  # "METHOD /path", one per item
 
 
+class Option(BaseModel):
+    """One answer the user can pick."""
+
+    label: str = Field(description="The answer in 1 to 5 words; add (Recommended) to the one you recommend")
+    description: str = Field(description="One line on what picking it means or its trade-off")
+
+
 class Question(BaseModel):
     """One follow-up question from the Discovery Interviewer."""
 
+    header: str = Field(description="A 1 to 3 word label for the question, e.g. Premium price")
     question: str = Field(description="A short, specific question")
-    options: list[str] = Field(
+    options: list[Option] = Field(
         description="2 to 4 likely answers, the recommended one first; the user can also type their own"
     )
 

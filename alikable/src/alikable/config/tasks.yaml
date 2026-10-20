@@ -12,8 +12,9 @@ interview_task:
     user cares about, and whether the app must call an existing API (base URL,
     endpoints, request and response shapes, auth method).
     Ask at most 4 short questions, never one that is already answered, each with
-    2 to 4 likely answers to pick from, the one you recommend first and marked
-    "(Recommended)". Ask no questions once nothing important is unclear.
+    a short header and 2 to 4 likely answers to pick from, each explained in one
+    line, the one you recommend first and marked "(Recommended)". Ask no
+    questions once nothing important is unclear.
     Never ask for secrets. Only front-end work in HTML, CSS and JavaScript is in scope.
 
     Intake form: {intake_form}
@@ -40,7 +41,7 @@ spec_writing_task:
   expected_output: >
     Valid JSON only, without '```'.
   agent: spec_writer
-  output_file: output/site_spec.json
+  output_file: output/site_spec_draft.json   # site_spec.json is saved only once the user approves (HITL #1)
 
 copywriting_task:
   description: >
@@ -51,7 +52,7 @@ copywriting_task:
     The complete updated site_spec.json. Valid JSON only, without '```'.
   agent: copywriter
   context: [spec_writing_task]
-  output_file: output/site_spec.json
+  output_file: output/site_spec_draft.json   # site_spec.json is saved only once the user approves (HITL #1)
 
 spec_review_task:
   description: >

@@ -23,7 +23,8 @@ and crews did not exist yet.
   (`site_spec`, `design`, `change_request`), because the Flow owns `site_spec.json`.
 - **Output guardrails** from the diagram (valid CSS and layouts, no secrets in code, deploy steps
   tested) are string `guardrail`s in YAML, so they need no Python.
-- **Files written** by tasks: `output/site_spec.json`, `output/design.md`, `output/DEPLOY.md`.
+- **Files written** by tasks: `output/site_spec_draft.json`, `output/design.md`, `output/DEPLOY.md`.
+  The UI saves `output/site_spec.json` only after the user approves the spec (HITL #1).
 - **Interview**: `interview_crew` runs one `interview_task` round per batch of answers. It returns an
   `Interview` (questions with options, plus a summary), and the Gradio UI shows each question as
   options plus Other. `human_input` was removed because it reads from the console.
