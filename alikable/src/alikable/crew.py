@@ -2,8 +2,7 @@ from crewai import Agent, Crew, Process, Task
 from crewai.project import CrewBase, agent, crew, task
 from crewai.agents.agent_builder.base_agent import BaseAgent
 from crewai.knowledge.source.text_file_knowledge_source import TextFileKnowledgeSource
-from alikable.models import DesignSystem, Interview
-from alikable.models import AuditReport, ChatReply, DesignSystem, FixResult, QAReport, RouteDecision
+from alikable.models import AuditReport, ChatReply, DesignSystem, FixResult, Interview, QAReport, RouteDecision
 from alikable.tools.build_checker import BuildCheckerTool
 
 

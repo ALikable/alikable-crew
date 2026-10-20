@@ -9,9 +9,9 @@ Planning crew writes site_spec.json. Run from the project root: uv run ui
 import gradio as gr
 from dotenv import load_dotenv
 
+from alikable.flows.phases import run_interview, run_planning_phase
 from alikable.guardrails import SECRET_WARNING, check_intake, redact_secrets
 from alikable.models import IntakeForm
-from alikable.phases import run_interview, run_planning_phase
 
 MAX_QUESTIONS = 4   # question slots on screen, matches the interview task's limit
 MAX_ROUNDS = 3      # interview rounds before the Spec Writer starts anyway

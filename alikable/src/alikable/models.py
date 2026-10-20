@@ -12,6 +12,12 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 
+def utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+# ------------------------------------------------------------------ Intake form
+
 class IntakeForm(BaseModel):
     """The intake form answers. The input guardrail checks them before any agent runs."""
 
@@ -22,6 +28,9 @@ class IntakeForm(BaseModel):
     api_base_url: str = ""  # empty when there is no backend yet
     endpoints: list[str] = []  # "METHOD /path", one per item
 
+
+# ---------------------------------------------------------------- Planning crew
+# The Discovery Interviewer's rounds. The Spec Writer writes site_spec.json as raw JSON.
 
 class Question(BaseModel):
     """One follow-up question from the Discovery Interviewer."""
@@ -41,20 +50,6 @@ class Interview(BaseModel):
     summary: str = Field(
         description="The requirements so far under the headings purpose, audience, pages, look and feel, qualities, API details, open questions"
     )
-
-
-def utc_now() -> datetime:
-    return datetime.now(timezone.utc)
-
-
-# ------------------------------------------------------------------ Intake form
-
-# Not built yet: the intake form's answers go to the Planning crew as text.
-
-
-# ---------------------------------------------------------------- Planning crew
-
-# Not built yet: the Spec Writer writes site_spec.json as raw JSON.
 
 
 # ------------------------------------------------------------------ Design crew
