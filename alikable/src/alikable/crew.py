@@ -76,6 +76,7 @@ class Alikable():
     def spec_critic(self) -> Agent:
         return Agent(
             config=self.agents_config['spec_critic'], # type: ignore[index]
+            knowledge_sources=[TextFileKnowledgeSource(file_paths=["design_practices.txt"])],
             verbose=True
         )
 

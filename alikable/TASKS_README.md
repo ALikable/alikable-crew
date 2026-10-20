@@ -25,7 +25,7 @@ and crews did not exist yet.
   (`site_spec`, `design`, `change_request`), because the Flow owns `site_spec.json`.
 - **Output guardrails** from the diagram (valid CSS and layouts, no secrets in code, deploy steps
   tested) are string `guardrail`s in YAML, so they need no Python.
-- **Files written**: `output/site_spec.json`, `output/design/` (by `phases.save_design_files`),
+- **Files written**: `output/site_spec_draft.json`, The UI saves `output/site_spec.json` only after the user approves the spec (HITL #1). `output/design/` (by `phases.save_design_files`),
   `output/site/` (the build; agents return `FileChange`s and `site_files.py` writes them),
   `output/polish_report.json`, `output/DEPLOY.md`.
 - **Interview**: `interview_crew` runs one `interview_task` round per batch of answers. It returns an

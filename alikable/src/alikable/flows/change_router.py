@@ -44,12 +44,11 @@ from crewai.flow.flow import Flow, listen, or_, router, start
 from pydantic import PrivateAttr
 
 from alikable.crew import Alikable, chat_memory_read_only
-from alikable.flows.phases import run_design_phase
+from alikable.flows.phases import SITE_SPEC, run_design_phase
 from alikable.flows.polish import run_polish_phase
 from alikable.models import ChatReply, ChatResponse, ChatState, Job, PipelineState, RouteDecision, utc_now
 from alikable.site_files import clear_checkpoint, restore_checkpoint, save_checkpoint
 
-SITE_SPEC = Path("output/site_spec.json")
 DESIGN = Path("output/design/design.json")
 HISTORY_LIMIT = 20   # chat lines passed to the Chat Agent
 
