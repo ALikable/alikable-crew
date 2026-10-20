@@ -1,9 +1,42 @@
+import os
+import threading
+
 from crewai import Agent, Crew, Process, Task
 from crewai.project import CrewBase, agent, crew, task
 from crewai.agents.agent_builder.base_agent import BaseAgent
 from crewai.knowledge.source.text_file_knowledge_source import TextFileKnowledgeSource
+from crewai.memory import Memory, MemoryScope, MemorySlice
 from alikable.models import AuditReport, ChatReply, DesignSystem, FixResult, Interview, QAReport, RouteDecision
 from alikable.tools.build_checker import BuildCheckerTool
+
+# ------------------------------------------------------------------ Memory
+# Only the chat side remembers. Every other crew works from its inputs alone, so
+# reviews and rework stay independent. One Memory backs every chat; each chat is
+# the scope /chat/<chat_id>. output/memory is not checkpointed, so rejecting a
+# build keeps what the user said.
+
+MEMORY_DIR = "output/memory"
+_memory: Memory | None = None
+_memory_lock = threading.Lock()
+
+
+def shared_memory() -> Memory:
+    """The one Memory for this process, made on first use (after load_dotenv)."""
+    global _memory
+    with _memory_lock:
+        if _memory is None:
+            _memory = Memory(storage=MEMORY_DIR, llm=os.getenv("MEMORY_MODEL", "gpt-5.4-mini"))
+        return _memory
+
+
+def chat_memory(chat_id: str) -> MemoryScope:
+    """Read and write one chat's memories."""
+    return MemoryScope(root_path=f"/chat/{chat_id}", memory=shared_memory())
+
+
+def chat_memory_read_only(chat_id: str) -> MemorySlice:
+    """Recall one chat's memories without saving anything."""
+    return MemorySlice(scopes=[f"/chat/{chat_id}"], read_only=True, memory=shared_memory())
 
 
 @CrewBase
@@ -227,37 +260,47 @@ class Alikable():
         )
 
     # ------------------------------------------------------------------ Crews
+    # Every crew is sequential. Only the chat crews take a chat_id and use memory.
 
-    def _crew(self, *tasks: Task) -> Crew:
-        """Builds a sequential crew from the given tasks and the agents that own them."""
+    @crew
+    def interview_crew(self) -> Crew:
+        """Runs one round of the Discovery Interviewer"""
         return Crew(
-            agents=[t.agent for t in tasks],
-            tasks=list(tasks),
+            agents=[self.discovery_interviewer()],
+            tasks=[self.interview_task()],
             process=Process.sequential,
             verbose=True,
         )
 
     @crew
-    def interview_crew(self) -> Crew:
-        """Runs one round of the Discovery Interviewer"""
-        return self._crew(self.interview_task())
-
-    @crew
     def planning_crew(self) -> Crew:
         """Writes site_spec.json from the interview summary"""
-        return self._crew(self.spec_writing_task(), self.copywriting_task(),
-                          self.spec_review_task())
+        return Crew(
+            agents=[self.spec_writer(), self.copywriter(), self.spec_critic()],
+            tasks=[self.spec_writing_task(), self.copywriting_task(), self.spec_review_task()],
+            process=Process.sequential,
+            verbose=True,
+        )
 
     @crew
     def design_crew(self) -> Crew:
         """Designs the components, stylesheet and page layouts"""
-        return self._crew(self.design_task(), self.design_review_task())
+        return Crew(
+            agents=[self.design_system_designer(), self.design_critic()],
+            tasks=[self.design_task(), self.design_review_task()],
+            process=Process.sequential,
+            verbose=True,
+        )
 
     @crew
     def implementation_crew(self) -> Crew:
         """Builds the API module and the pages, then reviews them"""
-        return self._crew(self.api_integration_task(), self.page_build_task(),
-                          self.code_review_task())
+        return Crew(
+            agents=[self.api_integrator(), self.page_builder(), self.code_reviewer()],
+            tasks=[self.api_integration_task(), self.page_build_task(), self.code_review_task()],
+            process=Process.sequential,
+            verbose=True,
+        )
 
     # Polish & Iterate: flows/polish.py runs QA and the audit in parallel, then the
     # Fixer once per bug or suggestion, so each is its own crew.
@@ -265,29 +308,61 @@ class Alikable():
     @crew
     def qa_crew(self) -> Crew:
         """Finds bugs in the built site"""
-        return self._crew(self.qa_task())
+        return Crew(
+            agents=[self.qa_tester()],
+            tasks=[self.qa_task()],
+            process=Process.sequential,
+            verbose=True,
+        )
 
     @crew
     def audit_crew(self) -> Crew:
         """Finds where the built site drifts from the spec and design"""
-        return self._crew(self.consistency_audit_task())
+        return Crew(
+            agents=[self.consistency_auditor()],
+            tasks=[self.consistency_audit_task()],
+            process=Process.sequential,
+            verbose=True,
+        )
 
     @crew
     def fix_crew(self) -> Crew:
         """Fixes one bug, inconsistency or small user change"""
-        return self._crew(self.fix_task())
+        return Crew(
+            agents=[self.fixer()],
+            tasks=[self.fix_task()],
+            process=Process.sequential,
+            verbose=True,
+        )
 
     @crew
     def deploy_crew(self) -> Crew:
         """Writes DEPLOY.md for the packaged site"""
-        return self._crew(self.deploy_guide_task())
+        return Crew(
+            agents=[self.deploy_guide_writer()],
+            tasks=[self.deploy_guide_task()],
+            process=Process.sequential,
+            verbose=True,
+        )
 
     @crew
-    def change_router_crew(self) -> Crew:
-        """Decides which crew handles a change request"""
-        return self._crew(self.route_change_task())
+    def change_router_crew(self, chat_id: str) -> Crew:
+        """Decides which crew handles a change request. Recalls the chat's memories, saves none."""
+        return Crew(
+            agents=[self.change_router()],
+            tasks=[self.route_change_task()],
+            process=Process.sequential,
+            memory=chat_memory_read_only(chat_id),
+            verbose=True,
+        )
 
     @crew
-    def chat_crew(self) -> Crew:
-        """Answers one chat message and decides what to do with it"""
-        return self._crew(self.chat_task())
+    def chat_crew(self, chat_id: str) -> Crew:
+        """Answers one chat message and decides what to do with it. Remembers the chat."""
+        return Crew(
+            agents=[self.chat_agent()],
+            tasks=[self.chat_task()],
+            process=Process.sequential,
+            memory=chat_memory(chat_id),
+            verbose=True,
+        )

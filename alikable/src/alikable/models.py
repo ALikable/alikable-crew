@@ -254,7 +254,7 @@ class Job(BaseModel):
 class ChatResponse(BaseModel):
     """Everything the UI needs after a message or a status refresh."""
 
-    session_id: str
+    chat_id: str        # made at the intake form; also the chat's memory scope
     reply: str = ""
     awaiting_approval: bool = False
     jobs: list[Job] = []

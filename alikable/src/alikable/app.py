@@ -4,11 +4,19 @@ Gradio UI for the start of the Flow: intake form -> input guardrail -> Planning 
 The Discovery Interviewer asks its questions as options to pick from, plus Other
 for a custom answer. When nothing important is unclear, or after MAX_ROUNDS, the
 Planning crew writes site_spec.json. Run from the project root: uv run ui
+
+Submitting the form starts a chat: its chat_id is the chat's memory scope (crew.py).
+Before planning, the form and the interview answers are saved to that memory, so the
+Chat Agent knows what the user asked for. The interview and planning crews have no
+memory of their own.
 """
+
+import uuid
 
 import gradio as gr
 from dotenv import load_dotenv
 
+from alikable.crew import chat_memory
 from alikable.flows.phases import run_interview, run_planning_phase
 from alikable.guardrails import SECRET_WARNING, check_intake, redact_secrets
 from alikable.models import IntakeForm
@@ -57,6 +65,11 @@ with gr.Blocks(title="Alikable") as demo:
                    **{o: gr.Textbox(value="", visible=False) for o in others}}
             return
         yield {status: "_The Planning crew is writing site_spec.json. This takes a few minutes..._"}
+        # Both are already free of secrets: the input guardrail and redact_secrets ran on them
+        chat_memory(s["chat_id"]).remember(
+            f"Intake form:\n{s['intake']}\n\nInterview answers:\n{s['answers'] or 'None'}",
+            source="intake",
+        )
         site_spec, approved = run_planning_phase(result.summary)
         note = "The Spec Critic approved it." if approved else "The Spec Critic still had fixes after 2 rounds, so check it carefully."
         yield {status: f"### site_spec.json is ready\n{note} Saved to output/site_spec.json.", spec: gr.Code(site_spec, visible=True)}
@@ -73,7 +86,8 @@ with gr.Blocks(title="Alikable") as demo:
             return
         for warning in warnings:
             gr.Warning(warning)
-        yield from advance({"intake": form.model_dump_json(indent=2), "answers": "", "round": 0})
+        yield from advance({"chat_id": uuid.uuid4().hex, "intake": form.model_dump_json(indent=2),
+                            "answers": "", "round": 0})
 
     def answer(s: dict, *values):
         """Adds this round's answers to the transcript (secrets removed), then runs the next round."""
