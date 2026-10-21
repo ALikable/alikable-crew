@@ -1,40 +1,39 @@
 """
-Main chat after the first build (the Change Router part of Documents/Agent_Diagram.png).
+A project after its spec is approved: its background jobs, the gate waiting for the
+user, and the chat (the Change Router part of Documents/Agent_Diagram.png).
 
-The UI calls run_chat(message, chat_id) for every message the user sends, and
-chat_status(chat_id) to refresh job statuses without sending one. Both return a
-ChatResponse: the reply, whether a build is waiting for approval (HITL #3), and the
-status of every background job in the session.
+The jobs, run by a ChatSession:
+  design   -> the Design crew designs the site from the spec; then HITL #2 waits
+  change   -> the crew a change was routed to and every crew after it:
+                planning -> design -> implementation -> polish
+              then HITL #3 waits. The first build is a change that starts at the
+              implementation crew.
+  deploy   -> HITL #3 approved: packages site.zip and writes DEPLOY.md for the host
+              and detail the user picked (flows/create_deploy_guide.py)
+  rollback -> HITL #3 rejected: restores the last approved build (site_files.py)
+  check    -> a read-only reviewer reports on the project
 
-The chat_id is made when the intake form is submitted (flows/intake.py) and is the
-chat's memory scope, /chat/<chat_id> (crew.py). Only the Chat Agent saves memories; the
-Change Router and background checks only recall them.
-
-For each message the Chat Agent picks one action:
+The UI starts the gates' jobs directly (flows/project.py). In the chat, for each message
+the Chat Agent picks one action:
   reply   -> answer in the chat
-  check   -> start read-only reviewers as background jobs
-  change  -> the Change Router picks the crew where the rework starts, and a change
-             job runs that crew and every crew after it:
-               planning -> design -> implementation -> polish
-             after which the build waits for approval
-  approve -> a deploy job packages site.zip and writes DEPLOY.md for the host and
-             detail the user asked for (flows/create_deploy_guide.py)
-  reject  -> a rollback job restores the last approved build (site_files.py)
+  check   -> start reviewers as check jobs
+  change  -> the Change Router picks the crew where the rework starts, and a change job runs
+  approve -> as the build gate's Approve
+  reject  -> as the build gate's Reject
 
 Before it runs, a change job saves a checkpoint of the build unless one is already
-kept, so the checkpoint is always the last approved build. Approving clears it.
+kept, so the checkpoint is always the last approved build. Approving clears it. The
+first build saves none: there is no approved build to go back to, so rejecting it
+builds it again.
 
-Each chat works on its own project folder, output/projects/<chat_id>/ (projects.py).
-A chat's change, deploy and rollback jobs run one at a time in the order they were
-sent, so two jobs never edit its site at once; each chat has its own runner, so
-different projects build at the same time. Check jobs only report, so they run in
+The chat_id is the chat's memory scope, /chat/<chat_id> (crew.py). Only the Chat Agent
+saves memories; the Change Router and check jobs only recall them.
+
+Each project works in its own folder, output/projects/<chat_id>/ (projects.py). Its
+design, change, deploy and rollback jobs run one at a time in the order they were
+started, so two jobs never edit its files at once; each project has its own runner,
+so different projects build at the same time. Check jobs only report, so they run in
 parallel on a shared runner.
-
-The intake flow (flows/intake.py) writes the approved spec and hands its chat_id over
-to this chat (the UI opens it). Not built yet (placeholders below, marked TODO):
-  - the first build between the intake flow and this chat (only the design runs)
-  - the planning and implementation crews in the change pipeline
-Until then the chat reads whatever spec, design and site its project folder holds.
 """
 
 import threading
@@ -48,17 +47,18 @@ from pydantic import PrivateAttr
 
 from alikable.crew import Alikable, chat_memory_read_only
 from alikable.flows.create_deploy_guide import run_deploy_guide_phase
-from alikable.flows.phases import run_design_phase
+from alikable.flows.intake import run_planning_phase, save_site_spec
+from alikable.flows.jobs import Jobs
+from alikable.flows.phases import run_design_phase, run_implementation_phase
 from alikable.flows.polish import run_polish_phase
-from alikable.models import (HOST_NAMES, ChatReply, ChatResponse, ChatState, Job, PipelineState, RouteDecision,
-                             utc_now)
+from alikable.models import HOST_NAMES, ChatReply, ChatState, Gate, Job, PipelineState, RouteDecision
 from alikable.projects import Project
 from alikable.site_files import clear_checkpoint, restore_checkpoint, save_checkpoint
 
 HISTORY_LIMIT = 20   # chat lines passed to the Chat Agent
 SPEAKERS = {"User: ": "user", "Assistant: ": "assistant"}   # history line prefix -> chat role
 
-_check_runner = ThreadPoolExecutor(max_workers=3, thread_name_prefix="check")   # shared by every chat
+_check_runner = ThreadPoolExecutor(max_workers=3, thread_name_prefix="check")   # shared by every project
 
 
 def _read(path: Path) -> str:
@@ -92,9 +92,16 @@ class ChangePipelineFlow(Flow[PipelineState]):
     @listen("planning")
     def run_planning(self):
         self._step("planning crew")
-        # TODO(planning crew): call run_planning_phase (flows/intake.py) with the current
-        # spec and the change as its summary, then reload site_spec from project.site_spec.
-        self.state.notes.append("Planning crew not built yet; skipped.")
+        summary = f"The current site spec:\n{self.state.site_spec}\n\nChange it as the user asked: {self.state.change_request}"
+        site_spec, approved = run_planning_phase(self.project, summary)
+        try:
+            save_site_spec(self.project, site_spec)
+        except ValueError as e:
+            self.state.notes.append(f"The Planning crew's spec was not valid JSON ({e}); kept the old spec.")
+            return
+        self.state.site_spec = _read(self.project.site_spec)
+        self.state.notes.append("Spec approved by the Spec Critic." if approved
+                                else "Spec not approved after 2 rounds; kept the last version.")
 
     @listen(or_("design", run_planning))
     def run_design(self):
@@ -103,7 +110,7 @@ class ChangePipelineFlow(Flow[PipelineState]):
             self.state.notes.append(f"Design skipped: no site spec at {self.project.site_spec}.")
             return
         spec = self.state.site_spec
-        if self.state.route in ("planning", "design"):   # the change is not in the spec yet
+        if self.state.route == "design":   # a planning change is already in the spec
             spec += f"\n\nRequested change: {self.state.change_request}"
         self.state.design, approved = run_design_phase(self.project, spec)
         self.state.notes.append(
@@ -114,8 +121,13 @@ class ChangePipelineFlow(Flow[PipelineState]):
     @listen(or_("implementation", run_design))
     def run_implementation(self):
         self._step("implementation crew")
-        # TODO(implementation crew): not built yet. Kick it off with site_spec and design.
-        self.state.notes.append("Implementation crew not built yet; skipped.")
+        # crews before this one already made the change; the builders build their result
+        approved = run_implementation_phase(
+            self.project, self.state.site_spec, self.state.design,
+            change_request=self.state.change_request if self.state.route == "implementation" else "",
+        )
+        self.state.notes.append("Build approved by the Code Reviewer." if approved
+                                else "Build not approved after 3 rounds; kept the last version.")
 
     @listen(or_("polish", run_implementation))
     def run_polish(self):
@@ -135,62 +147,130 @@ class ChangePipelineFlow(Flow[PipelineState]):
 # ---------------------------------------------------------------------- Session
 
 class ChatSession:
-    """One user's chat: the flow that answers their messages and the jobs it started."""
+    """A project after its spec is approved: its jobs, the gate waiting for the user, and its chat."""
 
-    def __init__(self, chat_id: str):
+    def __init__(self, chat_id: str, on_change: Callable[[], None] = lambda: None):
         self.id = chat_id
         self.project = Project(chat_id)
-        # changes, deploys and rollbacks of this project, one at a time
+        self.on_change = on_change          # anything the project saves changed (flows/project.py)
+        self.jobs = Jobs(on_change)
+        # design, change, deploy and rollback jobs of this project, one at a time
         self.build_runner = ThreadPoolExecutor(max_workers=1, thread_name_prefix=f"build-{chat_id[:8]}")
-        self.awaiting_approval = False
-        self.jobs: list[Job] = []
+        self.awaiting: Gate | None = None
         self.flow = ChatFlow()
         self.flow._session = self
         self.turn_lock = threading.Lock()   # one message at a time
-        self._lock = threading.Lock()       # guards jobs and _unreported
-        self._unreported: list[str] = []    # finished job results the Chat Agent has not passed on
+        self._gate_lock = threading.Lock()
 
-    def start_job(self, kind: str, title: str, work: Callable[[Job], str],
-                  runner: ThreadPoolExecutor) -> Job:
-        job = Job(kind=kind, title=title)  # type: ignore[arg-type]
-        with self._lock:
-            self.jobs.append(job)
-        runner.submit(self._run_job, job, work)
-        return job
+    # ------------------------------------------------------------------- gates
 
-    def _run_job(self, job: Job, work: Callable[[Job], str]) -> None:
-        self.update(job, status="running")
-        try:
-            result = work(job)
-        except Exception as e:
-            self.update(job, status="failed", step="", error=str(e))
-            report = f"{job.title} (job {job.id}) failed: {e}"
+    def open_gate(self, gate: Gate | None) -> None:
+        with self._gate_lock:
+            self.awaiting = gate
+        self.on_change()
+
+    def take_gate(self, gate: Gate) -> bool:
+        """Close the gate if it is the one waiting. False if it isn't, so a double click acts once."""
+        with self._gate_lock:
+            if self.awaiting != gate:
+                return False
+            self.awaiting = None
+        self.on_change()
+        return True
+
+    def approve(self, host: str, detail: str) -> bool:
+        """HITL #3 approve: the deploy job. False if no build is waiting for approval."""
+        if not self.take_gate("build"):
+            return False
+        self.start_deploy(host, detail)
+        return True
+
+    def reject(self) -> bool:
+        """HITL #3 reject: back to the last approved build, or a new first build if none was
+        approved yet. False if no build is waiting for approval."""
+        if not self.take_gate("build"):
+            return False
+        if self.project.checkpoint.exists():
+            self.start_rollback()
         else:
-            self.update(job, status="done", step="", result=result)
-            report = f"{job.title} (job {job.id}) finished: {result}"
-        with self._lock:
-            self._unreported.append(report)
+            self.start_first_build(title="Build again")
+        return True
 
-    def update(self, job: Job, **changes: Any) -> None:
-        with self._lock:
-            for field, value in changes.items():
-                setattr(job, field, value)
-            job.updated_at = utc_now()
+    # -------------------------------------------------------------------- jobs
 
-    def jobs_for_chat(self) -> str:
-        """Open jobs and new results, as text for the Chat Agent. New results count as reported."""
-        with self._lock:
-            open_jobs = [
-                f"- {j.title} (job {j.id}): {j.status}" + (f", now on the {j.step}" if j.step else "")
-                for j in self.jobs if j.status in ("queued", "running")
-            ]
-            finished, self._unreported = self._unreported, []
-        parts = []
-        if open_jobs:
-            parts.append("Still open:\n" + "\n".join(open_jobs))
-        if finished:
-            parts.append("Finished since the last message:\n" + "\n\n".join(finished))
-        return "\n\n".join(parts) or "None"
+    def start_design(self, request: str = "") -> Job:
+        """The Design crew designs the site from the spec, plus a change the user asked for at HITL #2."""
+        def work(job: Job) -> str:
+            self.jobs.update(job, step="design crew")
+            spec = _read(self.project.site_spec)
+            if request:
+                spec += f"\n\nRequested change: {request}"
+            _, approved = run_design_phase(self.project, spec)
+            self.open_gate("design")
+            return ("Design approved by the Design Critic." if approved
+                    else "Design not approved after 3 rounds; kept the last version.") + " Waiting for approval."
+
+        title = f"Design change: {request}" if request else "Design"
+        return self.jobs.start("design", title, work, self.build_runner, request=request)
+
+    def start_first_build(self, title: str = "First build") -> Job:
+        """Build the approved design: implementation, then polish. No checkpoint: nothing was approved yet."""
+        return self.start_change("implementation", "", title=title, checkpoint=False)
+
+    def start_change(self, route: str, request: str, title: str = "", checkpoint: bool = True) -> Job:
+        """Runs the crew the change was routed to and every crew after it, then HITL #3 waits."""
+        self.open_gate(None)   # a new change replaces the build waiting for approval
+
+        def work(job: Job) -> str:
+            if checkpoint:
+                save_checkpoint(self.project)
+            pipeline = ChangePipelineFlow()
+            pipeline._on_step = lambda step: self.jobs.update(job, step=step)
+            pipeline.kickoff(inputs={"chat_id": self.id, "route": route, "change_request": request})
+            self.open_gate("build")
+            return " ".join(pipeline.state.notes) + " Waiting for approval or a change."
+
+        return self.jobs.start("change", title or f"Change from the {route} crew: {request}", work,
+                               self.build_runner, route=route, request=request, title=title, checkpoint=checkpoint)
+
+    def start_deploy(self, host: str, detail: str) -> Job:
+        def work(job: Job) -> str:
+            clear_checkpoint(self.project)   # this build is approved
+            result = run_deploy_guide_phase(self.project, host, detail,
+                                            on_step=lambda step: self.jobs.update(job, step=step))
+            return result.summary()
+
+        return self.jobs.start("deploy", f"Deploy guide for {HOST_NAMES[host]}", work, self.build_runner,
+                               host=host, detail=detail)
+
+    def start_rollback(self) -> Job:
+        def work(job: Job) -> str:
+            restored = restore_checkpoint(self.project)
+            if not self.project.guide.exists():   # the restored build was never approved
+                self.open_gate("build")
+            if restored:
+                return "Restored the last approved build; every change since was undone."
+            return "There was no checkpoint to restore, so nothing changed."
+
+        return self.jobs.start("rollback", "Undo changes since the last approval", work, self.build_runner)
+
+    def start_check(self, agent: str, question: str) -> Job:
+        role = Alikable(self.project).agents_config[agent]["role"].strip()  # type: ignore[index]
+        return self.jobs.start("check", f"{role} check", lambda job: _run_check(agent, question, self.project),
+                               _check_runner, agent=agent, question=question)
+
+    def retry(self, job_id: str) -> Job | None:
+        """Start a failed or interrupted job again. None if there is no such job to retry."""
+        job = self.jobs.get(job_id)
+        if job is None or job.status not in ("failed", "interrupted"):
+            return None
+        starters: dict[str, Callable[..., Job]] = {
+            "design": self.start_design, "change": self.start_change, "deploy": self.start_deploy,
+            "rollback": self.start_rollback, "check": self.start_check,
+        }
+        return starters[job.kind](**job.params)
+
+    # -------------------------------------------------------------------- chat
 
     def messages(self) -> list[dict[str, str]]:
         """The chat so far as {role, content} messages, oldest first, for the UI."""
@@ -198,11 +278,13 @@ class ChatSession:
         return [{"role": role, "content": line.removeprefix(prefix)}
                 for line in lines for prefix, role in SPEAKERS.items() if line.startswith(prefix)]
 
-    def response(self, reply: str = "") -> ChatResponse:
-        with self._lock:
-            jobs = [j.model_copy() for j in self.jobs]
-        return ChatResponse(chat_id=self.id, reply=reply,
-                            awaiting_approval=self.awaiting_approval, jobs=jobs)
+    def send(self, message: str) -> str:
+        """Answer one user message; returns the reply."""
+        with self.turn_lock:
+            self.flow.kickoff(inputs={"message": message, "reply": ""})
+            reply = self.flow.state.reply
+        self.on_change()
+        return reply
 
 
 # ------------------------------------------------------------------------- Chat
@@ -219,14 +301,14 @@ class ChatFlow(Flow[ChatState]):
             "message": self.state.message,
             "history": "\n".join(self.state.history[-HISTORY_LIMIT:]) or "None",
             "site_spec": _read(session.project.site_spec) or "None yet",
-            "awaiting_approval": "yes" if session.awaiting_approval else "no",
-            "jobs": session.jobs_for_chat(),
+            "awaiting_approval": "yes" if session.awaiting == "build" else "no",
+            "jobs": session.jobs.for_chat(),
         })
 
         decision = result.pydantic
         if not isinstance(decision, ChatReply):   # unstructured answer: treat it as a reply
             decision = ChatReply(action="reply", message=result.raw)
-        if decision.action in ("approve", "reject") and not session.awaiting_approval:
+        if decision.action in ("approve", "reject") and session.awaiting != "build":
             decision.action = "reply"             # nothing is waiting for approval
 
         self.state.action = decision.action
@@ -243,15 +325,8 @@ class ChatFlow(Flow[ChatState]):
 
     @listen("check")
     def start_checks(self):
-        session: ChatSession = self._session
-        roles = Alikable(session.project).agents_config
-        for name in self.state.check_agents:
-            role = roles[name]["role"].strip()  # type: ignore[index]
-            session.start_job(
-                "check", f"{role} check",
-                lambda job, name=name, question=self.state.check_question: _run_check(name, question, session.project),
-                _check_runner,
-            )
+        for agent in self.state.check_agents:
+            self._session.start_check(agent, self.state.check_question)
 
     @router("change")
     def route_change(self) -> Literal["routed", "clarify"]:
@@ -274,46 +349,15 @@ class ChatFlow(Flow[ChatState]):
 
     @listen("routed")
     def start_change(self):
-        session: ChatSession = self._session
-        route, request = self.state.route, self.state.change_request
-        session.awaiting_approval = False   # a new change replaces the build waiting for approval
-
-        def work(job: Job) -> str:
-            save_checkpoint(session.project)
-            pipeline = ChangePipelineFlow()
-            pipeline._on_step = lambda step: session.update(job, step=step)
-            pipeline.kickoff(inputs={"chat_id": session.id, "route": route, "change_request": request})
-            session.awaiting_approval = True
-            return " ".join(pipeline.state.notes) + " Waiting for approval or a change."
-
-        session.start_job("change", f"Change from the {route} crew: {request}", work, session.build_runner)
+        self._session.start_change(self.state.route, self.state.change_request)
 
     @listen("approve")
     def start_deploy(self):
-        session: ChatSession = self._session
-        session.awaiting_approval = False
-
-        host, detail = self.state.deploy_host, self.state.deploy_detail
-
-        def work(job: Job) -> str:
-            clear_checkpoint(session.project)   # this build is approved
-            result = run_deploy_guide_phase(session.project, host, detail,
-                                            on_step=lambda step: session.update(job, step=step))
-            return result.summary()
-
-        session.start_job("deploy", f"Deploy guide for {HOST_NAMES[host]}", work, session.build_runner)
+        self._session.approve(self.state.deploy_host, self.state.deploy_detail)
 
     @listen("reject")
     def start_rollback(self):
-        session: ChatSession = self._session
-        session.awaiting_approval = False
-
-        def work(job: Job) -> str:
-            if restore_checkpoint(session.project):
-                return "Restored the last approved build; every change since was undone."
-            return "There was no checkpoint to restore, so nothing changed."
-
-        session.start_job("rollback", "Undo changes since the last approval", work, session.build_runner)
+        self._session.reject()
 
 
 def _run_check(agent_name: str, question: str, project: Project) -> str:
@@ -330,35 +374,3 @@ def _run_check(agent_name: str, question: str, project: Project) -> str:
         f"\n\nSite spec: {_read(project.site_spec) or 'None yet'}\n\nDesign: {_read(project.design_json) or 'None yet'}"
     )
     return result.raw
-
-
-# ----------------------------------------------------------------------- UI API
-
-_sessions: dict[str, ChatSession] = {}
-_sessions_lock = threading.Lock()
-
-
-def _get_session(chat_id: str) -> ChatSession:
-    with _sessions_lock:
-        if chat_id not in _sessions:
-            _sessions[chat_id] = ChatSession(chat_id)
-        return _sessions[chat_id]
-
-
-def run_chat(message: str, chat_id: str) -> ChatResponse:
-    """Send one user message and return the reply. chat_id comes from the intake form
-    (flows/intake.py) and is the same for every message in the chat."""
-    session = _get_session(chat_id)
-    with session.turn_lock:
-        session.flow.kickoff(inputs={"message": message, "reply": ""})
-        return session.response(session.flow.state.reply)
-
-
-def chat_status(chat_id: str) -> ChatResponse:
-    """Job statuses and the approval state, without sending a message (for UI polling)."""
-    return _get_session(chat_id).response()
-
-
-def chat_messages(chat_id: str) -> list[dict[str, str]]:
-    """The chat so far as {role, content} messages, for the UI's chat panel."""
-    return _get_session(chat_id).messages()

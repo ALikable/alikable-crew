@@ -14,7 +14,6 @@ waits for approval in the chat (HITL #3), and rejecting restores the checkpoint
 taken before the change (see site_files.py).
 """
 
-import shutil
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from typing import Literal
@@ -60,14 +59,8 @@ class PolishFlow(Flow[PolishState]):
 
     @start()
     def load_build(self):
-        # TODO(implementation crew): it will write the project's site/. Until then, polish
-        # the design's page layouts so this phase can be run and tested.
-        site_dir, design_dir = self.project.site_dir, self.project.design_dir
-        if not any(site_dir.glob("*.html")) and design_dir.exists():
-            site_dir.mkdir(parents=True, exist_ok=True)
-            for file in design_dir.iterdir():
-                if file.suffix in (".html", ".css") and file.name != "components.html":
-                    shutil.copy2(file, site_dir / file.name)
+        if not any(self.project.site_dir.glob("*.html")):
+            raise FileNotFoundError(f"There is no build to polish in {self.project.site_dir}/.")
 
     @listen(or_(load_build, "recheck"))
     def check(self):
@@ -163,7 +156,7 @@ def run_polish_phase(project: Project, site_spec: str, design: str = "", change_
 
 
 if __name__ == "__main__":
-    # Test run on a project's site/ (or its design layouts) with the sample spec:
+    # Test run on a project's site/ with the sample spec:
     #   uv run python -m alikable.flows.polish <chat_id> [rounds]
     import sys
     from pathlib import Path

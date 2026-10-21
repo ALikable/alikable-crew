@@ -88,6 +88,10 @@ class Project:
     def checkpoint(self) -> Path:       # the last approved build (site_files.py)
         return self.dir / ".checkpoint"
 
+    @property
+    def session(self) -> Path:          # stage, intake, chat, jobs and gate, between app runs (flows/project.py)
+        return self.dir / "session.json"
+
     def save_info(self, title: str) -> None:
         """Name the project, once, when its intake form is accepted."""
         if self.info.exists():
@@ -105,7 +109,11 @@ class Project:
 
     @property
     def progress(self) -> str:
-        """How far the project got, from the files it has written."""
+        """How far the project got: its stage, or for a project from before session.json, its files."""
+        try:
+            return json.loads(self.session.read_text(encoding="utf-8"))["stage"].replace("_", " ")
+        except (OSError, ValueError, KeyError):
+            pass
         if self.guide.exists():
             return "deploy guide written"
         if any(self.site_dir.glob("*.html")):
@@ -118,8 +126,8 @@ class Project:
 
     @property
     def updated_at(self) -> datetime:
-        times = [p.stat().st_mtime for p in (self.info, self.site_spec, self.design_json, self.site_dir,
-                                             self.polish_report, self.guide) if p.exists()]
+        times = [p.stat().st_mtime for p in (self.info, self.session, self.site_spec, self.design_json,
+                                             self.site_dir, self.polish_report, self.guide) if p.exists()]
         return datetime.fromtimestamp(max(times, default=0), tz=timezone.utc)
 
 

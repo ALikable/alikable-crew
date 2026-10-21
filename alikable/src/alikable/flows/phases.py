@@ -59,6 +59,15 @@ def save_design_files(project: Project, design: DesignSystem | None) -> None:
     print(f"Design files saved to: {design_dir}/  (open index.html in a browser)")
 
 
+def save_styles(project: Project, styles_css: str) -> None:
+    """A hand edit of the stylesheet at HITL #2. Saved to styles.css and to design.json,
+    because the builders read design.json."""
+    design = json.loads(project.design_json.read_text(encoding="utf-8"))
+    design["styles_css"] = styles_css
+    project.design_json.write_text(json.dumps(design, indent=2), encoding="utf-8")
+    (project.design_dir / "styles.css").write_text(styles_css, encoding="utf-8")
+
+
 def run_review_loop(name: str, make_crew: Callable[[], Crew], inputs: dict,
                     max_rounds: int, log_path: Path) -> tuple[CrewOutput, bool]:
     """Runs a writer/critic crew (critic last) until APPROVED. Returns (last result, approved)."""
@@ -142,10 +151,18 @@ def ensure_home_page(project: Project, site_spec: str) -> None:
             encoding="utf-8",
         )
 
-def run_implementation_phase(project: Project, site_spec: str, design: str, max_rounds: int = 3) -> bool:
-    """Builds the site into the project's site/ and loops on the Code Reviewer. Returns approved."""
-    feedback = "None"          # round 1: no feedback yet
-    previous_build = "None"    # round 1: nothing built yet
+def run_implementation_phase(project: Project, site_spec: str, design: str, change_request: str = "",
+                             max_rounds: int = 3) -> bool:
+    """Builds the site into the project's site/ and loops on the Code Reviewer. Returns approved.
+
+    With a change_request the builders start from the current site and make that change;
+    without one they build it from scratch."""
+    if change_request:
+        feedback = f"The user asked for this change: {change_request}"
+        previous_build = read_site(project)
+    else:
+        feedback = "None"          # round 1: no feedback yet
+        previous_build = "None"    # round 1: nothing built yet
     log = "# Code review log\n"
 
     for round_no in range(1, max_rounds + 1):

@@ -3,7 +3,8 @@ Intake and planning phase (Intake form, Input guardrail, Planning crew and HITL 
 Documents/Agent_Diagram.png).
 
 The flow runs once per user action and keeps its state between them, like the chat
-(change_router.py). Each action returns the IntakeState, whose stage says what to show:
+(change_router.py); the project's session holds it (flows/project.py). After each
+action the IntakeState's stage says what to show:
   form    -> the input guardrail checks the intake form, then the first interview round
   answers -> the answers are added to the interview, then the next round
   changes -> HITL #1 edit: the Planning crew rewrites the spec with the user's changes
@@ -19,12 +20,10 @@ is made only once the input guardrail accepts the form. Before planning, the for
 Chat Agent knows what the user asked for. The interview and planning crews have no
 memory of their own.
 
-After approval the Design crew runs on the saved spec (ui/intake.py).
+After approval a design job runs the Design crew on the saved spec (flows/project.py).
 """
 
 import json
-import threading
-import uuid
 from collections.abc import Callable
 from typing import Literal
 
@@ -34,14 +33,13 @@ from pydantic import PrivateAttr
 from alikable.crew import Alikable, chat_memory
 from alikable.flows.phases import run_review_loop
 from alikable.guardrails import SECRET_WARNING, check_intake, redact_secrets
-from alikable.models import IntakeForm, IntakeState, Interview
+from alikable.models import IntakeState, Interview
 from alikable.projects import Project
 
 MAX_QUESTIONS = 4   # matches the interview task's limit
 NO_ANSWER = "No answer, choose a sensible default"
 # The stages each action is allowed at
-ACTION_STAGES = {"form": ("form",), "answers": ("interview",), "changes": ("review",),
-                 "approve": ("review", "approved")}
+ACTION_STAGES = {"form": ("form",), "answers": ("interview",), "changes": ("review",), "approve": ("review",)}
 
 
 def run_interview(project: Project, intake_form: str, answers: str) -> Interview:
@@ -164,52 +162,3 @@ class IntakeFlow(Flow[IntakeState]):
             return
         self.state.site_spec = self.project.site_spec.read_text(encoding="utf-8")
         self.state.stage = "approved"
-
-
-# ----------------------------------------------------------------------- UI API
-
-_flows: dict[str, IntakeFlow] = {}
-_flows_lock = threading.Lock()
-
-
-def _kickoff(chat_id: str, action: str, on_step: Callable[[str], None] | None, **inputs) -> IntakeState:
-    with _flows_lock:
-        if chat_id not in _flows:
-            _flows[chat_id] = IntakeFlow()
-        flow = _flows[chat_id]
-    flow._on_step = on_step
-    flow.kickoff(inputs={"chat_id": chat_id, "action": action, "replies": [], "request": "", **inputs})
-    return flow.state.model_copy(deep=True)
-
-
-def start_intake(form: IntakeForm, on_step: Callable[[str], None] | None = None) -> IntakeState:
-    """Submit the intake form. Starts a new chat; its chat_id is in the returned state."""
-    chat_id = uuid.uuid4().hex
-    state = _kickoff(chat_id, "form", on_step, form=form.model_dump())
-    if state.problems:   # refused by the input guardrail: the next try starts a new chat
-        with _flows_lock:
-            _flows.pop(chat_id, None)
-    return state
-
-
-def answer_interview(chat_id: str, replies: list[str],
-                     on_step: Callable[[str], None] | None = None) -> IntakeState:
-    """One reply per question of the last round, "" to let the agents decide."""
-    return _kickoff(chat_id, "answers", on_step, replies=replies)
-
-
-def revise_spec(chat_id: str, request: str, on_step: Callable[[str], None] | None = None) -> IntakeState:
-    """HITL #1 edit: the Planning crew rewrites the spec with these changes."""
-    return _kickoff(chat_id, "changes", on_step, request=request)
-
-
-def approve_spec(chat_id: str, site_spec: str, on_step: Callable[[str], None] | None = None) -> IntakeState:
-    """HITL #1 approve: saves site_spec (the user may have edited it) to the project's site_spec.json."""
-    return _kickoff(chat_id, "approve", on_step, site_spec=site_spec)
-
-
-def current_state(chat_id: str) -> IntakeState | None:
-    """The intake's latest state, or None if it has not run in this app process."""
-    with _flows_lock:
-        flow = _flows.get(chat_id)
-    return flow.state.model_copy(deep=True) if flow else None
