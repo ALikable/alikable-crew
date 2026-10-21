@@ -184,7 +184,86 @@ class PolishState(BaseModel):
 
 # ------------------------------------------------------------ Deploy Guide crew
 
-# Not built yet: the Deploy Guide Writer writes DEPLOY.md as Markdown.
+# The Release Builder packages output/site/ and smoke-tests the package; the Deploy
+# Guide Writer writes DEPLOY.md as Markdown (flows/create_deploy_guide.py).
+
+DeployHost = Literal["netlify", "vercel", "github_pages", "s3"]
+GuideDetail = Literal["quick", "standard", "detailed"]   # how long and how explained DEPLOY.md is
+
+HOST_NAMES: dict[str, str] = {
+    "netlify": "Netlify", "vercel": "Vercel", "github_pages": "GitHub Pages", "s3": "AWS S3 static website hosting",
+}
+
+
+class SmokeCheck(BaseModel):
+    """One request the Release Builder made to the unzipped package."""
+
+    path: str                  # as requested, e.g. index.html or js/api.js
+    status: int | None = None  # HTTP status; None when the request did not get an answer
+    ok: bool
+    note: str = ""             # e.g. "linked from index.html"
+
+
+class ReleaseReport(BaseModel):
+    """The packaged site and how its smoke test went."""
+
+    zip_path: str = ""
+    files: list[str] = []      # paths inside the zip
+    size_bytes: int = 0
+    build: BuildCheck
+    smoke: list[SmokeCheck] = []
+
+    @property
+    def failures(self) -> list[SmokeCheck]:
+        return [c for c in self.smoke if not c.ok]
+
+    @property
+    def ok(self) -> bool:
+        return self.build.ok and not self.failures
+
+    def as_text(self) -> str:
+        lines = [f"Package: {self.zip_path} ({len(self.files)} files, {self.size_bytes / 1024:.1f} KB)",
+                 "Files: " + ", ".join(self.files),
+                 "Build check: " + self.build.as_text(),
+                 f"Smoke test: {len(self.smoke) - len(self.failures)} of {len(self.smoke)} requests OK, "
+                 "served from a subfolder as GitHub Pages does"]
+        lines += [f"FAILED {c.path}: " + (f"HTTP {c.status}" if c.status else "no answer")
+                  + (f" ({c.note})" if c.note else "") for c in self.failures]
+        return "\n".join(lines)
+
+
+class DeployGuideState(BaseModel):
+    host: DeployHost = "netlify"
+    detail: GuideDetail = "standard"
+    max_rounds: int = 2          # times the Deploy Guide Writer may write the guide
+    round: int = 0
+    site_spec: str = ""
+    config_js: str = ""          # js/config.js, where the API base URL is set
+    uses_api: bool = False
+    polish_summary: str = ""
+    release: ReleaseReport | None = None
+    guide: str = ""
+    problems: list[str] = []     # what the last guide failed in validation; empty when it passed
+
+
+class DeployGuideResult(BaseModel):
+    """What the deploy job returns and the UI offers for download."""
+
+    zip_path: str
+    guide_path: str
+    guide: str
+    host: DeployHost
+    detail: GuideDetail
+    release_ok: bool
+    guide_problems: list[str] = []   # still there after the last round
+
+    def summary(self) -> str:
+        release = "Package passed the build check and smoke test." if self.release_ok \
+            else "Package has problems; see Known problems in the guide."
+        guide = "Guide passed validation." if not self.guide_problems \
+            else f"Guide still has {len(self.guide_problems)} problem(s): " + "; ".join(self.guide_problems)
+        return (f"Wrote {self.guide_path} ({self.detail} guide for {HOST_NAMES[self.host]}) "
+                f"and {self.zip_path}. {release} {guide}")
 
 
 # ----------------------------------------------------------- Change Router crew
@@ -211,6 +290,12 @@ class ChatReply(BaseModel):
         Literal["qa_tester", "consistency_auditor", "code_reviewer", "spec_critic", "design_critic"]
     ] = Field(default_factory=list, description="For check: the reviewers to run in the background")
     check_question: str = Field(default="", description="For check: what the reviewers should find out")
+    deploy_host: DeployHost = Field(
+        default="netlify", description="For approve: the static host the user wants to deploy on; netlify if they did not say"
+    )
+    deploy_detail: GuideDetail = Field(
+        default="standard", description="For approve: how detailed the user wants the deploy guide; standard if they did not say"
+    )
 
 
 class RouteDecision(BaseModel):
@@ -235,6 +320,8 @@ class ChatState(BaseModel):
     route: str = ""                  # crew the change starts at
     check_agents: list[str] = []     # reviewers to run in the background
     check_question: str = ""
+    deploy_host: str = "netlify"     # for approve: where the user deploys, and how detailed a guide
+    deploy_detail: str = "standard"
 
 
 class PipelineState(BaseModel):
@@ -303,3 +390,5 @@ class BuildCheck(BaseModel):
 
 
 FixResult.model_rebuild()   # its FileChange is defined in Site files, below it
+ReleaseReport.model_rebuild()   # its BuildCheck is defined in Tools, below it
+DeployGuideState.model_rebuild()

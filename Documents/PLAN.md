@@ -16,7 +16,8 @@ in the same process. It is not a web API.
 | Rollback (`site_files.py`) | Built. A fix that adds build errors is undone at once; a change job checkpoints the last approved build and **reject** restores it |
 | Intake (`app.py`, `guardrails.py`) | Partly built. `uv run ui`: intake form → input guardrail → Discovery Interviewer rounds (multiple choice, max 3) → Planning crew writes `output/site_spec.json`. Stops there: no HITL #1, no design → build, no hand-over to the chat |
 | Planning crew + review loop (`flows/phases.py`) | Built (`run_interview`, `run_planning_phase`, max 2 rounds). Not yet called by the change pipeline: `TODO(planning crew)` in `ChangePipelineFlow.run_planning` |
-| Implementation, Deploy Guide crews | Defined in `crew.py`, not built. `TODO(<crew>)` placeholders in the change pipeline |
+| Implementation crew | Defined in `crew.py`, not built. `TODO(<crew>)` placeholder in the change pipeline |
+| Deploy Guide crew (`flows/create_deploy_guide.py`) | Built. `run_deploy_guide_phase(host, detail)`: Release Builder (`tools/release_builder.py`) zips `output/site/` to `output/site.zip` and smoke-tests it on localhost; the writer makes `output/DEPLOY.md` (also inside the zip) for one host (netlify, vercel, github_pages, s3) at quick/standard/detailed depth; Python checks headings, secrets and file names, max 2 rounds. Started by approve in the chat |
 | Chat memory (`crew.py`) | Built. One shared `Memory` in `output/memory/` (LLM: `MEMORY_MODEL`, default `gpt-5.4-mini`), one scope per chat, `/chat/<chat_id>`. Only `chat_crew` saves; `change_router_crew` and check jobs recall read-only; every other crew has no memory. The intake form and interview answers are saved there before planning. Not undone by reject |
 | Gradio UI | Intake screen built (`src/alikable/app.py`). Chat, jobs and approval panels not built (this plan) |
 
@@ -172,8 +173,9 @@ In rough order; the UI steps above note which ones they depend on.
 4. **Polish crew**: built, but the QA Tester reads the code instead of using the site:
    it needs MCP Playwright to click through pages and read console errors. The Build
    Checker is static only, so runtime errors are not caught yet.
-5. **Deploy Guide crew**: needs the Release Builder tool (package + smoke test) to
-   produce `site.zip`. Replace `TODO(deploy guide crew)` in `ChatFlow.start_deploy`.
+5. **Deploy Guide crew**: built. The UI still needs a host picker and a detail picker
+   (today the Chat Agent reads them from the approve message, default netlify/standard),
+   a `gr.Markdown` view of `DEPLOY.md`, and download buttons (Step 5).
 6. **`approve(chat_id)`** in `change_router.py` (Step 3).
 7. **Background checks get no file access.** They only see the spec and design text.
    Once tools exist, give reviewers read-only access to `output/`.

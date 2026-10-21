@@ -8,6 +8,7 @@ from crewai.knowledge.source.text_file_knowledge_source import TextFileKnowledge
 from crewai.memory import Memory, MemoryScope, MemorySlice
 from alikable.models import AuditReport, ChatReply, DesignSystem, FixResult, Interview, QAReport, RouteDecision, SiteBuild
 from alikable.tools.build_checker import BuildCheckerTool
+from alikable.tools.release_builder import ReleaseBuilderTool
 # ------------------------------------------------------------------ Memory
 # Only the chat side remembers. Every other crew works from its inputs alone, so
 # reviews and rework stay independent. One Memory backs every chat; each chat is
@@ -146,6 +147,7 @@ class Alikable():
     def deploy_guide_writer(self) -> Agent:
         return Agent(
             config=self.agents_config['deploy_guide_writer'], # type: ignore[index]
+            tools=[ReleaseBuilderTool()],
             verbose=True
         )
 
