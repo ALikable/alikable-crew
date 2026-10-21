@@ -1,10 +1,14 @@
 """
 Main chat after the first build (the Change Router part of Documents/Agent_Diagram.png).
 
-The UI calls run_chat(message, session_id) for every message the user sends, and
-chat_status(session_id) to refresh job statuses without sending one. Both return a
+The UI calls run_chat(message, chat_id) for every message the user sends, and
+chat_status(chat_id) to refresh job statuses without sending one. Both return a
 ChatResponse: the reply, whether a build is waiting for approval (HITL #3), and the
 status of every background job in the session.
+
+The chat_id is made when the intake form is submitted (app.py) and is the chat's
+memory scope, /chat/<chat_id> (crew.py). Only the Chat Agent saves memories; the
+Change Router and background checks only recall them.
 
 For each message the Chat Agent picks one action:
   reply   -> answer in the chat
@@ -39,13 +43,12 @@ from typing import Any, Literal
 from crewai.flow.flow import Flow, listen, or_, router, start
 from pydantic import PrivateAttr
 
-from alikable.crew import Alikable
-from alikable.flows.phases import run_design_phase
+from alikable.crew import Alikable, chat_memory_read_only
+from alikable.flows.phases import SITE_SPEC, run_design_phase
 from alikable.flows.polish import run_polish_phase
 from alikable.models import ChatReply, ChatResponse, ChatState, Job, PipelineState, RouteDecision, utc_now
 from alikable.site_files import clear_checkpoint, restore_checkpoint, save_checkpoint
 
-SITE_SPEC = Path("output/site_spec.json")
 DESIGN = Path("output/design/design.json")
 HISTORY_LIMIT = 20   # chat lines passed to the Chat Agent
 
@@ -124,8 +127,8 @@ class ChangePipelineFlow(Flow[PipelineState]):
 class ChatSession:
     """One user's chat: the flow that answers their messages and the jobs it started."""
 
-    def __init__(self, session_id: str):
-        self.id = session_id
+    def __init__(self, chat_id: str):
+        self.id = chat_id
         self.awaiting_approval = False
         self.jobs: list[Job] = []
         self.flow = ChatFlow()
@@ -179,7 +182,7 @@ class ChatSession:
     def response(self, reply: str = "") -> ChatResponse:
         with self._lock:
             jobs = [j.model_copy() for j in self.jobs]
-        return ChatResponse(session_id=self.id, reply=reply,
+        return ChatResponse(chat_id=self.id, reply=reply,
                             awaiting_approval=self.awaiting_approval, jobs=jobs)
 
 
@@ -193,7 +196,7 @@ class ChatFlow(Flow[ChatState]):
     @start()
     def chat(self):
         session: ChatSession = self._session
-        result = Alikable().chat_crew().kickoff(inputs={
+        result = Alikable().chat_crew(session.id).kickoff(inputs={
             "message": self.state.message,
             "history": "\n".join(self.state.history[-HISTORY_LIMIT:]) or "None",
             "site_spec": _read(SITE_SPEC) or "None yet",
@@ -225,13 +228,13 @@ class ChatFlow(Flow[ChatState]):
             role = roles[name]["role"].strip()  # type: ignore[index]
             self._session.start_job(
                 "check", f"{role} check",
-                lambda job, name=name, question=self.state.check_question: _run_check(name, question),
+                lambda job, name=name, question=self.state.check_question: _run_check(name, question, self._session.id),
                 _check_runner,
             )
 
     @router("change")
     def route_change(self) -> Literal["routed", "clarify"]:
-        result = Alikable().change_router_crew().kickoff(inputs={
+        result = Alikable().change_router_crew(self._session.id).kickoff(inputs={
             "change_request": self.state.change_request,
             "site_spec": _read(SITE_SPEC) or "None yet",
         })
@@ -290,11 +293,17 @@ class ChatFlow(Flow[ChatState]):
         session.start_job("rollback", "Undo changes since the last approval", work, _build_runner)
 
 
-def _run_check(agent_name: str, question: str) -> str:
-    """Run one reviewer on its own, outside any crew. Read-only: it reports, never edits."""
+def _run_check(agent_name: str, question: str, chat_id: str) -> str:
+    """Run one reviewer on its own, outside any crew. Read-only: it reports, never edits,
+    and it recalls the chat's memories but saves none."""
+    # Recalled here rather than set as agent memory: Agent.kickoff() saves its result to
+    # memory even when the memory is read-only.
+    recalled = chat_memory_read_only(chat_id).recall(question, limit=5)
+    preferences = "\n".join(f"- {m.record.content}" for m in recalled) or "None"
     reviewer = getattr(Alikable(), agent_name)()
     result = reviewer.kickoff(
         f"{question}\n\nReport your findings only; do not change any files."
+        f"\n\nWhat the user has said in this chat: {preferences}"
         f"\n\nSite spec: {_read(SITE_SPEC) or 'None yet'}\n\nDesign: {_read(DESIGN) or 'None yet'}"
     )
     return result.raw
@@ -306,25 +315,25 @@ _sessions: dict[str, ChatSession] = {}
 _sessions_lock = threading.Lock()
 
 
-def _get_session(session_id: str) -> ChatSession:
+def _get_session(chat_id: str) -> ChatSession:
     with _sessions_lock:
-        if session_id not in _sessions:
-            _sessions[session_id] = ChatSession(session_id)
-        return _sessions[session_id]
+        if chat_id not in _sessions:
+            _sessions[chat_id] = ChatSession(chat_id)
+        return _sessions[chat_id]
 
 
-def run_chat(message: str, session_id: str | None = None) -> ChatResponse:
-    """Send one user message and return the reply. Pass no session_id to start a new
-    chat, then pass the returned session_id with every later message."""
-    session = _get_session(session_id or uuid.uuid4().hex)
+def run_chat(message: str, chat_id: str) -> ChatResponse:
+    """Send one user message and return the reply. chat_id comes from the intake form
+    (app.py) and is the same for every message in the chat."""
+    session = _get_session(chat_id)
     with session.turn_lock:
         session.flow.kickoff(inputs={"message": message, "reply": ""})
         return session.response(session.flow.state.reply)
 
 
-def chat_status(session_id: str) -> ChatResponse:
+def chat_status(chat_id: str) -> ChatResponse:
     """Job statuses and the approval state, without sending a message (for UI polling)."""
-    return _get_session(session_id).response()
+    return _get_session(chat_id).response()
 
 
 def main():
@@ -332,14 +341,13 @@ def main():
     from dotenv import load_dotenv
 
     load_dotenv()
-    session_id = None
+    chat_id = uuid.uuid4().hex   # the UI makes this at the intake form
     print("Alikable chat. Type 'status' to see jobs, 'exit' to quit.")
     while (message := input("\nYou: ").strip()).lower() not in {"exit", "quit"}:
-        if message.lower() == "status" and session_id:
-            response = chat_status(session_id)
+        if message.lower() == "status":
+            response = chat_status(chat_id)
         elif message:
-            response = run_chat(message, session_id)
-            session_id = response.session_id
+            response = run_chat(message, chat_id)
             print(f"\nAlikable: {response.reply}")
         else:
             continue

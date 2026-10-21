@@ -14,24 +14,26 @@ in the same process. It is not a web API.
 | Polish & Iterate loop (`flows/polish.py`) | Built. QA Tester ‖ Consistency Auditor → Fixer one item at a time, `POLISH_ROUNDS` (default 1) rounds of fixes then a report-only check; writes `output/polish_report.json` |
 | Build Checker tool (`tools/build_checker.py`) | Built. Static: HTML, local links, CDN allowlist, CSS braces, `node --check`, JSON, secrets |
 | Rollback (`site_files.py`) | Built. A fix that adds build errors is undone at once; a change job checkpoints the last approved build and **reject** restores it |
-| Intake flow (first build) | Not built |
-| Planning, Implementation, Deploy Guide crews | Defined in `crew.py`, not built. `TODO(<crew>)` placeholders in the change pipeline |
-| Gradio UI | Not built (this plan) |
+| Intake (`app.py`, `guardrails.py`) | Partly built. `uv run ui`: intake form → input guardrail → Discovery Interviewer rounds (multiple choice, max 3) → Planning crew writes `output/site_spec.json`. Stops there: no HITL #1, no design → build, no hand-over to the chat |
+| Planning crew + review loop (`flows/phases.py`) | Built (`run_interview`, `run_planning_phase`, max 2 rounds). Not yet called by the change pipeline: `TODO(planning crew)` in `ChangePipelineFlow.run_planning` |
+| Implementation, Deploy Guide crews | Defined in `crew.py`, not built. `TODO(<crew>)` placeholders in the change pipeline |
+| Chat memory (`crew.py`) | Built. One shared `Memory` in `output/memory/` (LLM: `MEMORY_MODEL`, default `gpt-5.4-mini`), one scope per chat, `/chat/<chat_id>`. Only `chat_crew` saves; `change_router_crew` and check jobs recall read-only; every other crew has no memory. The intake form and interview answers are saved there before planning. Not undone by reject |
+| Gradio UI | Intake screen built (`src/alikable/app.py`). Chat, jobs and approval panels not built (this plan) |
 
 ## The contract the UI builds on
 
 ```python
 from alikable.flows.change_router import run_chat, chat_status
 
-response = run_chat(message, session_id)   # one call per user message; session_id=None starts a chat
-response = chat_status(session_id)         # refresh without sending a message
+response = run_chat(message, chat_id)   # one call per user message; chat_id comes from the intake form
+response = chat_status(chat_id)         # refresh without sending a message
 ```
 
 Both return a `ChatResponse`:
 
 | Field | UI use |
 |---|---|
-| `session_id` | Keep in `gr.State`; pass back on every call |
+| `chat_id` | Made by the intake form, kept in `gr.State`; pass on every call. It is also the chat's memory scope, `/chat/<chat_id>` |
 | `reply` | Append to the chat as the assistant message (empty from `chat_status`) |
 | `awaiting_approval` | Show the approval banner with Approve and Reject buttons (HITL #3) |
 | `jobs: list[Job]` | Jobs panel: `kind` (check, change, deploy, rollback), `title`, `status`, `step`, `result`, `error`, `updated_at` |
@@ -63,11 +65,11 @@ so the UI never waits on them. It polls `chat_status` to show their progress.
 
 ### Step 1. Chat panel (works with today's code)
 
-- `uv add gradio`; add `ui = "alikable.ui.app:main"` to `[project.scripts]`.
-- New `src/alikable/ui/app.py` with a `gr.Blocks` app:
-  - `gr.Chatbot` (messages format), `gr.Textbox` + Send button, `gr.State` for `session_id`.
-  - Send handler: call `run_chat(text, session_id)`, append the user and assistant
-    messages, store `response.session_id`, and update the jobs panel and banner from
+- Gradio and the `ui` script (`alikable.app:main`) already exist. Add the chat to the
+  existing `gr.Blocks` in `src/alikable/app.py`, shown once the intake screen is done (Step 4):
+  - `gr.Chatbot` (messages format), `gr.Textbox` + Send button, `gr.State` for `chat_id`.
+  - Send handler: call `run_chat(text, chat_id)`, append the user and assistant
+    messages, and update the jobs panel and banner from
     the same response.
   - Disable the Send button while a call is running. `ChatSession.turn_lock` already
     queues overlapping calls, but the UI should not encourage them.
@@ -75,19 +77,19 @@ so the UI never waits on them. It polls `chat_status` to show their progress.
   the terminal).
 
 ```python
-def send(text, history, session_id):
-    response = run_chat(text, session_id)
+def send(text, history, chat_id):
+    response = run_chat(text, chat_id)
     history += [{"role": "user", "content": text},
                 {"role": "assistant", "content": response.reply}]
-    return "", history, response.session_id, jobs_table(response), banner(response)
+    return "", history, jobs_table(response), banner(response)
 ```
 
 ### Step 2. Jobs panel and polling
 
 - `gr.Dataframe` (or a `gr.HTML` list) of jobs: status, title, step, job id. Show
   newest first, with a status color for queued, running, done and failed.
-- `gr.Timer(2)` whose tick calls `chat_status(session_id)` and refreshes the jobs panel
-  and the approval banner. Skip the tick while `session_id` is `None`.
+- `gr.Timer(2)` whose tick calls `chat_status(chat_id)` and refreshes the jobs panel
+  and the approval banner. Skip the tick until the intake form has made a `chat_id`.
 - Selecting a job shows its `result` or `error` in a details box.
 - When a job finishes, show it in the jobs panel but do not post into the chat. The
   Chat Agent already reports finished results in its next reply (`jobs_for_chat()`),
@@ -102,13 +104,13 @@ def send(text, history, session_id):
   call in `change_router.py` instead:
 
   ```python
-  def approve(session_id: str) -> ChatResponse:
+  def approve(chat_id: str) -> ChatResponse:
       """Start the deploy job without asking the Chat Agent."""
   ```
 
   It should reuse the body of `ChatFlow.start_deploy`, with the same "only when
   awaiting approval" guard.
-- Reject button: same idea, a direct `reject(session_id)` that reuses
+- Reject button: same idea, a direct `reject(chat_id)` that reuses
   `ChatFlow.start_rollback`. Saying "undo that" in the chat already works through the
   Chat Agent's `reject` action. Rejecting undoes every change since the last approval,
   not only the latest one.
@@ -122,16 +124,12 @@ def send(text, history, session_id):
 The first build happens before the chat, so the UI needs a first screen and two more
 approval gates.
 
-- Intake form screen (`gr.Column` of fields with the predetermined questions), shown
-  until a site spec exists, then replaced by the chat.
-- Input guardrail on submit: front-end only (HTML/CSS/JS), no secrets.
-- **Discovery interview through the UI.** `interview_task` has `human_input: true`,
-  which reads from the terminal and blocks inside the crew. In the UI this would hang
-  the job. Options:
-  1. Run the interview as chat turns: the Discovery Interviewer asks one question per
-     `run_chat` call until it has enough, then the planning job starts. (Recommended:
-     reuses the chat panel.)
-  2. Collect all follow-up answers in the intake form and drop `human_input`.
+- **Done** (`app.py`): the intake form screen, the input guardrail (`guardrails.py`:
+  front end only, endpoints as method + path, secrets removed), and the Discovery
+  interview as rounds of multiple-choice questions on screen (`human_input` was dropped).
+  Today the screen ends by showing `site_spec.json`.
+- Still to do: after the spec is written, show the spec gate below instead of ending,
+  then replace the intake screen with the chat.
 - Generalize the approval state so one banner serves all three gates:
   `awaiting_approval: bool` → `awaiting: Literal["spec", "design", "build"] | None`.
   - Spec gate (HITL #1): show `site_spec.json`; Approve or describe edits → planning.
@@ -155,10 +153,11 @@ In rough order; the UI steps above note which ones they depend on.
 1. **Intake flow** (Step 4): intake form → input guardrail → planning → HITL #1 →
    design → HITL #2 → implementation → polish → HITL #3 → deploy, as a Flow that reuses
    the change pipeline's crew steps and ends in a `ChatSession`.
-2. **Planning crew** (Steps 4 and changes): the interview cannot use `human_input` under
-   the UI (see Step 4). Fix `crew.py:21`: `knowledge_source=` should be
-   `knowledge_sources=`, so the interviewer currently gets no design-practices
-   knowledge. Then replace `TODO(planning crew)` in `ChangePipelineFlow.run_planning`.
+2. **Planning crew in the change pipeline**: the crew and `run_planning_phase()` are
+   built (and the `knowledge_sources` typo is fixed). Replace `TODO(planning crew)` in
+   `ChangePipelineFlow.run_planning` with a call to it. It takes an interview summary,
+   not a change request, so pass the current spec plus the change as the summary,
+   then reload `site_spec` from `SITE_SPEC`.
 3. **Implementation crew**: no task writes files yet, and there are no parallel Page
    Builders. Replace `TODO(implementation crew)`.
    - **Assumption (agreed for now): the build lands in `output/site/`** as plain HTML,
@@ -175,7 +174,7 @@ In rough order; the UI steps above note which ones they depend on.
    Checker is static only, so runtime errors are not caught yet.
 5. **Deploy Guide crew**: needs the Release Builder tool (package + smoke test) to
    produce `site.zip`. Replace `TODO(deploy guide crew)` in `ChatFlow.start_deploy`.
-6. **`approve(session_id)`** in `change_router.py` (Step 3).
+6. **`approve(chat_id)`** in `change_router.py` (Step 3).
 7. **Background checks get no file access.** They only see the spec and design text.
    Once tools exist, give reviewers read-only access to `output/`.
 8. **One project per run.** Sessions are separate, but all of them read and write the
@@ -183,8 +182,15 @@ In rough order; the UI steps above note which ones they depend on.
    would need a folder per session.
 9. **Persistence.** Sessions and jobs are in memory and are lost when the app restarts.
    If that matters, save `ChatSession` state (history, jobs, awaiting) to
-   `output/session.json`, or use the Flow `@persist` decorator.
-10. **Streaming (deferred).** Later: split `chat_task` into a structured decision task and
+   `output/session.json`, or use the Flow `@persist` decorator. Memory already survives
+   restarts (`output/memory/`), but `chat_id` lives in `gr.State`, so a page reload starts a
+   new chat and the old chat's memories are never read again. Resuming needs both the
+   session saved and the `chat_id` kept (e.g. `gr.BrowserState`).
+10. **Crews build every agent and task (low priority).** Each `@crew` call builds all 15
+    agents and 15 tasks to return the few it uses (about 0.4s per crew build). Knowledge is not
+    embedded then (only at kickoff, for the crew's own agents), so it costs no LLM or embedding
+    calls. Removing `@crew` would fix it, at the cost of the automatic crew name and kickoff hooks.
+11. **Streaming (deferred).** Later: split `chat_task` into a structured decision task and
     a streamed reply task, run the reply with `Crew(stream=True)`, and make the Send
     handler a generator that yields partial replies to the `gr.Chatbot`.
 

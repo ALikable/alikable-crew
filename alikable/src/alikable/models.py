@@ -12,6 +12,12 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 
+def utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+# ------------------------------------------------------------------ Intake form
+
 class IntakeForm(BaseModel):
     """The intake form answers. The input guardrail checks them before any agent runs."""
 
@@ -23,11 +29,21 @@ class IntakeForm(BaseModel):
     endpoints: list[str] = []  # "METHOD /path", one per item
 
 
+class Option(BaseModel):
+    """One answer the user can pick."""
+
+    label: str = Field(description="The answer in 1 to 5 words; add (Recommended) to the one you recommend")
+    description: str = Field(description="One line on what picking it means or its trade-off")
+
+# ---------------------------------------------------------------- Planning crew
+# The Discovery Interviewer's rounds. The Spec Writer writes site_spec.json as raw JSON.
+
 class Question(BaseModel):
     """One follow-up question from the Discovery Interviewer."""
 
+    header: str = Field(description="A 1 to 3 word label for the question, e.g. Premium price")
     question: str = Field(description="A short, specific question")
-    options: list[str] = Field(
+    options: list[Option] = Field(
         description="2 to 4 likely answers, the recommended one first; the user can also type their own"
     )
 
@@ -41,20 +57,6 @@ class Interview(BaseModel):
     summary: str = Field(
         description="The requirements so far under the headings purpose, audience, pages, look and feel, qualities, API details, open questions"
     )
-
-
-def utc_now() -> datetime:
-    return datetime.now(timezone.utc)
-
-
-# ------------------------------------------------------------------ Intake form
-
-# Not built yet: the intake form's answers go to the Planning crew as text.
-
-
-# ---------------------------------------------------------------- Planning crew
-
-# Not built yet: the Spec Writer writes site_spec.json as raw JSON.
 
 
 # ------------------------------------------------------------------ Design crew
@@ -261,7 +263,7 @@ class Job(BaseModel):
 class ChatResponse(BaseModel):
     """Everything the UI needs after a message or a status refresh."""
 
-    session_id: str
+    chat_id: str        # made at the intake form; also the chat's memory scope
     reply: str = ""
     awaiting_approval: bool = False
     jobs: list[Job] = []

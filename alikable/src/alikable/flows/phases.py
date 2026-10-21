@@ -7,6 +7,7 @@ and the review loop runs it again with the critic's changes as {feedback} until
 the critic says APPROVED. At the end, each part of the design is saved as its own file.
 """
 
+import json
 from collections.abc import Callable
 from pathlib import Path
 
@@ -23,7 +24,7 @@ REVIEW_LOG = Path("output/design_review_log.md")
 SPEC_REVIEW_LOG = Path("output/spec_review_log.md")
 DESIGN_DIR = Path("output/design")
 CODE_REVIEW_LOG = Path("output/code_review_log.md")
-
+SITE_SPEC = Path("output/site_spec.json")   # the approved spec every later crew reads
 
 def is_approved(review: str) -> bool:
     """True if the critic's answer starts with APPROVED (ignores ** and # around it)."""
@@ -103,6 +104,13 @@ def run_planning_phase(interview_summary: str, max_rounds: int = 2) -> tuple[str
     return result.tasks_output[1].raw, approved       # Copywriter's output is the complete spec
 
 
+def save_site_spec(site_spec: str) -> None:
+    """HITL #1 approved: saves the spec to SITE_SPEC. Raises ValueError if it is not valid JSON."""
+    spec = json.loads(site_spec.strip().removeprefix("```json").removeprefix("```").removesuffix("```"))
+    SITE_SPEC.parent.mkdir(parents=True, exist_ok=True)
+    SITE_SPEC.write_text(json.dumps(spec, indent=2), encoding="utf-8")
+
+
 def run_design_phase(site_spec: str, max_rounds: int = 3) -> tuple[str, bool]:
     """Returns (design, approved)."""
     result, approved = run_review_loop(
@@ -132,7 +140,7 @@ def reset_site() -> None:
     # Safety rule: the hidden attribute always wins, even over display: flex
     with open(SITE_DIR / "styles.css", "a", encoding="utf-8") as css:
         css.write("\n[hidden] { display: none !important; }\n")
-                
+
 def run_implementation_phase(site_spec: str, design: str, max_rounds: int = 3) -> bool:
     """Builds the site into output/site/ and loops on the Code Reviewer. Returns approved."""
     feedback = "None"   # first round: no feedback yet
