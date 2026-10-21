@@ -41,7 +41,7 @@ spec_writing_task:
   expected_output: >
     Valid JSON only, without '```'.
   agent: spec_writer
-  output_file: output/site_spec_draft.json   # site_spec.json is saved only once the user approves (HITL #1)
+  output_file: output/projects/{chat_id}/site_spec_draft.json   # site_spec.json is saved only once the user approves (HITL #1)
 
 copywriting_task:
   description: >
@@ -52,7 +52,7 @@ copywriting_task:
     The complete updated site_spec.json. Valid JSON only, without '```'.
   agent: copywriter
   context: [spec_writing_task]
-  output_file: output/site_spec_draft.json   # site_spec.json is saved only once the user approves (HITL #1)
+  output_file: output/projects/{chat_id}/site_spec_draft.json   # site_spec.json is saved only once the user approves (HITL #1)
 
 spec_review_task:
   description: >
@@ -92,7 +92,7 @@ design_task:
   agent: design_system_designer
   guardrail: >
     The stylesheet is valid CSS and every page in the site spec has a layout.
-  output_file: output/design/design.json
+  output_file: output/projects/{chat_id}/design/design.json
 
 
 design_review_task:

@@ -16,7 +16,7 @@ train = "alikable.main:train"
 replay = "alikable.main:replay"
 test = "alikable.main:test"
 run_with_trigger = "alikable.main:run_with_trigger"
-ui = "alikable.app:main"
+ui = "alikable.main:run"
 
 [build-system]
 requires = ["hatchling"]

@@ -116,7 +116,7 @@ class DesignSystem(BaseModel):
 
 # ---------------------------------------------------------- Implementation crew
 
-# Not built yet. Its build goes to output/site/ as FileChange objects (see Site files).
+# Its build goes to the project's site/ as FileChange objects (see Site files).
 
 
 # -------------------------------------------------------- Polish & Iterate crew
@@ -195,6 +195,7 @@ class PolishReport(BaseModel):
 
 
 class PolishState(BaseModel):
+    chat_id: str = ""            # the project being polished (projects.py)
     site_spec: str = ""
     design: str = ""
     change_request: str = ""     # a small user change routed straight to polish; fixed first, once
@@ -208,7 +209,7 @@ class PolishState(BaseModel):
 
 # ------------------------------------------------------------ Deploy Guide crew
 
-# The Release Builder packages output/site/ and smoke-tests the package; the Deploy
+# The Release Builder packages the project's site/ and smoke-tests the package; the Deploy
 # Guide Writer writes DEPLOY.md as Markdown (flows/create_deploy_guide.py).
 
 DeployHost = Literal["netlify", "vercel", "github_pages", "s3"]
@@ -257,6 +258,7 @@ class ReleaseReport(BaseModel):
 
 
 class DeployGuideState(BaseModel):
+    chat_id: str = ""           # the project being packaged (projects.py)
     host: DeployHost = "netlify"
     detail: GuideDetail = "standard"
     max_rounds: int = 2          # times the Deploy Guide Writer may write the guide
@@ -349,6 +351,7 @@ class ChatState(BaseModel):
 
 
 class PipelineState(BaseModel):
+    chat_id: str = ""          # the project being changed (projects.py)
     route: str = ""             # crew the change starts at
     change_request: str = ""
     site_spec: str = ""
@@ -390,7 +393,7 @@ class FileChange(BaseModel):
 # ------------------------------------------------------------------------ Tools
 
 class SiteBuild(BaseModel):
-    """What an Implementation crew agent built: files for output/site/."""
+    """What an Implementation crew agent built: files for the project's site/."""
 
     files: list[FileChange] = Field(
         description="Every file you wrote: its path in the site (e.g. index.html or js/api.js) "

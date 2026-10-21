@@ -7,6 +7,7 @@ from crewai.agents.agent_builder.base_agent import BaseAgent
 from crewai.knowledge.source.text_file_knowledge_source import TextFileKnowledgeSource
 from crewai.memory import Memory, MemoryScope, MemorySlice
 from alikable.models import AuditReport, ChatReply, DesignSystem, FixResult, Interview, QAReport, RouteDecision, SiteBuild
+from alikable.projects import Project
 from alikable.tools.build_checker import BuildCheckerTool
 from alikable.tools.release_builder import ReleaseBuilderTool
 # ------------------------------------------------------------------ Memory
@@ -41,10 +42,18 @@ def chat_memory_read_only(chat_id: str) -> MemorySlice:
 
 @CrewBase
 class Alikable():
-    """Alikable crews, one per phase of Documents/Agent_Diagram.png"""
+    """Alikable crews, one per phase of Documents/Agent_Diagram.png, for one project.
+
+    The project gives the tools their folder: agents call the Build Checker and the
+    Release Builder without input, so the folder can't come from the agent. Kickoffs
+    whose tasks have an output_file must also pass the project's chat_id as an input
+    (tasks.yaml)."""
 
     agents: list[BaseAgent]
     tasks: list[Task]
+
+    def __init__(self, project: Project):
+        self.project = project
 
     # ------------------------------------------------------------------ Agents
 
@@ -116,7 +125,7 @@ class Alikable():
     def code_reviewer(self) -> Agent:
         return Agent(
             config=self.agents_config['code_reviewer'], # type: ignore[index]
-            tools=[BuildCheckerTool()],
+            tools=[BuildCheckerTool(site_dir=self.project.site_dir)],
             llm="openai/gpt-5.6-luna",
             verbose=True
         )
@@ -125,7 +134,7 @@ class Alikable():
     def qa_tester(self) -> Agent:
         return Agent(
             config=self.agents_config['qa_tester'], # type: ignore[index]
-            tools=[BuildCheckerTool()],
+            tools=[BuildCheckerTool(site_dir=self.project.site_dir)],
             verbose=True
         )
 
@@ -147,7 +156,7 @@ class Alikable():
     def deploy_guide_writer(self) -> Agent:
         return Agent(
             config=self.agents_config['deploy_guide_writer'], # type: ignore[index]
-            tools=[ReleaseBuilderTool()],
+            tools=[ReleaseBuilderTool(site_dir=self.project.site_dir, zip_path=self.project.release_zip)],
             verbose=True
         )
 
@@ -311,7 +320,7 @@ class Alikable():
 
     @crew
     def code_review_crew(self) -> Crew:
-        """Reviews the built site in output/site/"""
+        """Reviews the project's built site"""
         return Crew(
             agents=[self.code_reviewer()],
             tasks=[self.code_review_task()],

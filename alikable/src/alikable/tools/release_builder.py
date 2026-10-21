@@ -1,7 +1,7 @@
 """
 Release Builder (the dashed tool box in the Deploy Guide crew of Documents/Agent_Diagram.png).
 
-Packages the built site in output/site/ as output/site.zip, with index.html at the
+Packages a project's built site (its site/ folder) as its site.zip, with index.html at the
 top of the zip, then smoke-tests the package: it unzips it into a temporary folder,
 serves it on localhost from a subfolder (as GitHub Pages does, so links that start
 with / break here too) and requests the home page, every page and every local file
@@ -25,10 +25,8 @@ from crewai.tools import BaseTool
 from pydantic import BaseModel
 
 from alikable.models import ReleaseReport, SmokeCheck
-from alikable.site_files import OUTPUT, SITE_DIR
 from alikable.tools.build_checker import _is_local, _PageParser, check_build
 
-RELEASE_ZIP = OUTPUT / "site.zip"
 SUBFOLDER = "site"   # the package is served at http://127.0.0.1:<port>/site/
 
 
@@ -38,7 +36,7 @@ def _site_files(site_dir: Path) -> list[Path]:
                   if p.is_file() and not any(part.startswith(".") for part in p.relative_to(site_dir).parts))
 
 
-def package_site(site_dir: Path = SITE_DIR, zip_path: Path = RELEASE_ZIP) -> list[str]:
+def package_site(site_dir: Path, zip_path: Path) -> list[str]:
     """Zip the site with its files at the top of the zip. Returns the paths inside it."""
     files = _site_files(site_dir)
     zip_path.parent.mkdir(parents=True, exist_ok=True)
@@ -48,7 +46,7 @@ def package_site(site_dir: Path = SITE_DIR, zip_path: Path = RELEASE_ZIP) -> lis
     return [p.relative_to(site_dir).as_posix() for p in files]
 
 
-def add_to_release(name: str, text: str, zip_path: Path = RELEASE_ZIP) -> None:
+def add_to_release(name: str, text: str, zip_path: Path) -> None:
     """Add one text file (e.g. DEPLOY.md) to the top of the zip, replacing one already there."""
     with zipfile.ZipFile(zip_path) as zf:
         entries = [(info, zf.read(info)) for info in zf.infolist() if info.filename != name]
@@ -73,7 +71,7 @@ def _get(url: str) -> int | None:
         return None
 
 
-def smoke_test(zip_path: Path = RELEASE_ZIP) -> list[SmokeCheck]:
+def smoke_test(zip_path: Path) -> list[SmokeCheck]:
     """Serve the unzipped package from a subfolder on localhost and request every page and linked file."""
     checks: list[SmokeCheck] = []
     with tempfile.TemporaryDirectory() as tmp:
@@ -116,7 +114,7 @@ def smoke_test(zip_path: Path = RELEASE_ZIP) -> list[SmokeCheck]:
     return checks
 
 
-def build_release(site_dir: Path = SITE_DIR, zip_path: Path = RELEASE_ZIP) -> ReleaseReport:
+def build_release(site_dir: Path, zip_path: Path) -> ReleaseReport:
     """Check, package and smoke-test the site. Raises FileNotFoundError if there is no site."""
     if not site_dir.exists() or not any(site_dir.glob("*.html")):
         raise FileNotFoundError(f"{site_dir}/ has no HTML pages to package")
@@ -133,15 +131,17 @@ class _NoInput(BaseModel):
 class ReleaseBuilderTool(BaseTool):
     name: str = "Release Builder"
     description: str = (
-        "Packages the built site in output/site/ as output/site.zip and smoke-tests the package "
+        "Packages the project's built site as site.zip and smoke-tests the package "
         "on localhost, served from a subfolder as GitHub Pages does: the home page, every page "
         "and every local file the pages link to. Also runs the Build Checker. Takes no input. "
         "Returns the files in the package, the build check and every failed request."
     )
     args_schema: Type[BaseModel] = _NoInput
+    site_dir: Path   # the project's site/ and site.zip, set when the agent is built (crew.py)
+    zip_path: Path
 
     def _run(self) -> str:
         try:
-            return build_release().as_text()
+            return build_release(self.site_dir, self.zip_path).as_text()
         except FileNotFoundError as e:
             return f"FAIL: {e}"

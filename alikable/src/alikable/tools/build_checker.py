@@ -1,7 +1,7 @@
 """
 Build Checker (the dashed tool box in Documents/Agent_Diagram.png).
 
-Static checks that the built site in output/site/ will load: well-formed HTML,
+Static checks that a project's built site (output/projects/<chat_id>/site/) will load: well-formed HTML,
 local links and assets that exist, scripts only from allowlisted CDNs, balanced
 CSS, JavaScript that parses (with `node --check`, skipped when node is missing),
 valid JSON and no secrets. It does not open a browser, so it cannot catch errors
@@ -21,7 +21,6 @@ from crewai.tools import BaseTool
 from pydantic import BaseModel
 
 from alikable.models import BuildCheck
-from alikable.site_files import SITE_DIR
 
 ALLOWED_CDNS = ("https://cdn.jsdelivr.net/", "https://cdnjs.cloudflare.com/", "https://unpkg.com/")
 VOID_TAGS = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta",
@@ -164,7 +163,7 @@ def _check_js(scripts: list[tuple[str, str, str]], errors: list[str], warnings: 
                 errors.append(f"{label}: " + (f"line {line.group(1)}: " if line else "") + message)
 
 
-def check_build(site_dir: Path = SITE_DIR) -> BuildCheck:
+def check_build(site_dir: Path) -> BuildCheck:
     errors: list[str] = []
     warnings: list[str] = []
     scripts: list[tuple[str, str, str]] = []   # (label, code, suffix) for node --check
@@ -208,12 +207,13 @@ class _NoInput(BaseModel):
 class BuildCheckerTool(BaseTool):
     name: str = "Build Checker"
     description: str = (
-        "Checks the built site in output/site/ for broken HTML, links or assets that do not "
+        "Checks the project's built site for broken HTML, links or assets that do not "
         "exist, scripts from CDNs that are not allowlisted, unbalanced CSS, JavaScript syntax "
         "errors, invalid JSON and secrets. Takes no input. Returns PASS, or each error with "
         "its file and line."
     )
     args_schema: Type[BaseModel] = _NoInput
+    site_dir: Path   # the project's site/, set when the agent is built (crew.py)
 
     def _run(self) -> str:
-        return check_build().as_text()
+        return check_build(self.site_dir).as_text()

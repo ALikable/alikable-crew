@@ -7,80 +7,76 @@ The flow runs once per user action and keeps its state between them, like the ch
   form    -> the input guardrail checks the intake form, then the first interview round
   answers -> the answers are added to the interview, then the next round
   changes -> HITL #1 edit: the Planning crew rewrites the spec with the user's changes
-  approve -> HITL #1 approve: the spec is saved to output/site_spec.json
+  approve -> HITL #1 approve: the spec is saved to the project's site_spec.json
 
 Each round the Discovery Interviewer asks up to MAX_QUESTIONS questions, as options to
 pick from. When nothing important is unclear, or after max_rounds rounds, the Planning
 crew writes the spec (max 2 rounds with the Spec Critic).
 
-Submitting the form starts a chat: its chat_id is the chat's memory scope (crew.py).
-Before planning, the form and the interview answers are saved to that memory, so the
+Submitting the form starts a chat: its chat_id is the chat's memory scope (crew.py)
+and names the project folder, output/projects/<chat_id>/ (projects.py). The folder
+is made only once the input guardrail accepts the form. Before planning, the form and the interview answers are saved to that memory, so the
 Chat Agent knows what the user asked for. The interview and planning crews have no
 memory of their own.
 
-After approval the Design crew runs on the saved spec (app.py, main.py).
+After approval the Design crew runs on the saved spec (ui/intake.py).
 """
 
 import json
 import threading
 import uuid
 from collections.abc import Callable
-from pathlib import Path
 from typing import Literal
 
 from crewai.flow.flow import Flow, listen, or_, router, start
 from pydantic import PrivateAttr
 
 from alikable.crew import Alikable, chat_memory
-from alikable.flows.phases import SITE_SPEC, run_review_loop
+from alikable.flows.phases import run_review_loop
 from alikable.guardrails import SECRET_WARNING, check_intake, redact_secrets
 from alikable.models import IntakeForm, IntakeState, Interview
+from alikable.projects import Project
 
-SPEC_REVIEW_LOG = Path("output/spec_review_log.md")
 MAX_QUESTIONS = 4   # matches the interview task's limit
 NO_ANSWER = "No answer, choose a sensible default"
 # The stages each action is allowed at
 ACTION_STAGES = {"form": ("form",), "answers": ("interview",), "changes": ("review",),
                  "approve": ("review", "approved")}
 
-# Sample intake form for terminal runs (main.py). The UI collects real ones: uv run ui
-SAMPLE_FORM = IntakeForm(
-    description="Task manager UI. Users log in, see their tasks, add and delete them.",
-    audience="Small teams tracking their own work",
-    look_and_feel="Clean, light theme, blue accent",
-    qualities=["Intuitive", "Responsive"],
-    endpoints=["POST /api/auth/login", "GET /api/tasks", "POST /api/tasks", "DELETE /api/tasks/:id"],
-)
 
-
-def run_interview(intake_form: str, answers: str) -> Interview:
+def run_interview(project: Project, intake_form: str, answers: str) -> Interview:
     """One interview round: the questions to ask next (none when done) and the summary so far."""
-    result = Alikable().interview_crew().kickoff(
+    result = Alikable(project).interview_crew().kickoff(
         inputs={"intake_form": intake_form, "answers": answers}
     )
     return result.pydantic or Interview(questions=[], summary=result.raw)   # unstructured: treat as done
 
 
-def run_planning_phase(interview_summary: str, max_rounds: int = 2) -> tuple[str, bool]:
+def run_planning_phase(project: Project, interview_summary: str, max_rounds: int = 2) -> tuple[str, bool]:
     """Returns (site_spec, approved)."""
     result, approved = run_review_loop(
-        "Spec", lambda: Alikable().planning_crew(), {"interview_summary": interview_summary},
-        max_rounds, SPEC_REVIEW_LOG,
+        "Spec", lambda: Alikable(project).planning_crew(),
+        {"interview_summary": interview_summary, "chat_id": project.chat_id},   # chat_id places the draft (tasks.yaml)
+        max_rounds, project.spec_review_log,
     )
     return result.tasks_output[1].raw, approved       # Copywriter's output is the complete spec
 
 
-def save_site_spec(site_spec: str) -> None:
-    """HITL #1 approved: saves the spec to SITE_SPEC. Raises ValueError if it is not valid JSON."""
+def save_site_spec(project: Project, site_spec: str) -> None:
+    """HITL #1 approved: saves the project's site_spec.json. Raises ValueError if it is not valid JSON."""
     spec = json.loads(site_spec.strip().removeprefix("```json").removeprefix("```").removesuffix("```"))
-    SITE_SPEC.parent.mkdir(parents=True, exist_ok=True)
-    SITE_SPEC.write_text(json.dumps(spec, indent=2), encoding="utf-8")
+    project.dir.mkdir(parents=True, exist_ok=True)
+    project.site_spec.write_text(json.dumps(spec, indent=2), encoding="utf-8")
 
 
 class IntakeFlow(Flow[IntakeState]):
     """Handles one user action per kickoff, from the intake form to the approved spec."""
 
     _on_step: Callable[[str], None] | None = PrivateAttr(default=None)   # set by the caller
+
+    @property
+    def project(self) -> Project:
+        return Project(self.state.chat_id)
 
     def _step(self, step: str) -> None:
         print(f"\n===== INTAKE: {step} =====\n")
@@ -113,6 +109,7 @@ class IntakeFlow(Flow[IntakeState]):
             self.state.problems = str(e).splitlines()
             return "refused"
         self.state.intake = form.model_dump_json(indent=2)
+        self.project.save_info(title=(form.description.strip().splitlines() or ["Untitled"])[0][:80])
         return "interview"
 
     @router("answers")
@@ -126,7 +123,7 @@ class IntakeFlow(Flow[IntakeState]):
     @router("interview")
     def interview_round(self) -> Literal["ask", "plan"]:
         self._step("discovery interviewer")
-        result = run_interview(self.state.intake, self.state.answers or "None")
+        result = run_interview(self.project, self.state.intake, self.state.answers or "None")
         self.state.summary = result.summary
         questions = result.questions[:MAX_QUESTIONS]
         if questions and self.state.round < self.state.max_rounds:
@@ -154,18 +151,18 @@ class IntakeFlow(Flow[IntakeState]):
     @listen(or_("plan", "replan"))
     def write_spec(self):
         self._step("planning crew")
-        self.state.site_spec, self.state.spec_approved = run_planning_phase(self.state.summary)
+        self.state.site_spec, self.state.spec_approved = run_planning_phase(self.project, self.state.summary)
         self.state.stage = "review"
 
     @listen("approve")
     def save_spec(self):
         self._step("saving the approved spec")
         try:
-            save_site_spec(self.state.site_spec)
+            save_site_spec(self.project, self.state.site_spec)
         except ValueError as e:
             self.state.problems = [f"The spec is not valid JSON ({e}). Fix it or ask for changes."]
             return
-        self.state.site_spec = SITE_SPEC.read_text(encoding="utf-8")
+        self.state.site_spec = self.project.site_spec.read_text(encoding="utf-8")
         self.state.stage = "approved"
 
 
@@ -207,41 +204,12 @@ def revise_spec(chat_id: str, request: str, on_step: Callable[[str], None] | Non
 
 
 def approve_spec(chat_id: str, site_spec: str, on_step: Callable[[str], None] | None = None) -> IntakeState:
-    """HITL #1 approve: saves site_spec (the user may have edited it) to SITE_SPEC."""
+    """HITL #1 approve: saves site_spec (the user may have edited it) to the project's site_spec.json."""
     return _kickoff(chat_id, "approve", on_step, site_spec=site_spec)
 
 
-def run_in_terminal(form: IntakeForm = SAMPLE_FORM) -> IntakeState:
-    """Terminal stand-in for the intake screen. Returns the state at approved, or the refused form."""
-    state = start_intake(form)
-    while True:
-        for line in state.warnings + state.problems:
-            print(f"! {line}")
-        if state.stage == "interview":
-            replies = []
-            for q in state.questions:
-                print(f"\n{q.header}: {q.question}")
-                for i, option in enumerate(q.options, 1):
-                    print(f"  {i}. {option.label} - {option.description}")
-                pick = input("Number, your own answer, or Enter to let the agents decide: ").strip()
-                chosen = int(pick) if pick.isdigit() and 0 < int(pick) <= len(q.options) else 0
-                replies.append(q.options[chosen - 1].label if chosen else pick)
-            state = answer_interview(state.chat_id, replies)
-        elif state.stage == "review":
-            print(f"\n{state.site_spec}\n")
-            print("The Spec Critic approved it." if state.spec_approved
-                  else "The Spec Critic still had fixes after 2 rounds, so check it carefully.")
-            reply = input("Type 'approve', or describe what to change: ").strip()
-            state = approve_spec(state.chat_id, state.site_spec) if reply.lower() == "approve" \
-                else revise_spec(state.chat_id, reply)
-        else:
-            return state
-
-
-if __name__ == "__main__":
-    # Test run with the sample form:  uv run python -m alikable.flows.intake
-    from dotenv import load_dotenv
-
-    load_dotenv()
-    final = run_in_terminal()
-    print(f"\nStage: {final.stage}. " + (f"Spec saved to {SITE_SPEC}." if final.stage == "approved" else ""))
+def current_state(chat_id: str) -> IntakeState | None:
+    """The intake's latest state, or None if it has not run in this app process."""
+    with _flows_lock:
+        flow = _flows.get(chat_id)
+    return flow.state.model_copy(deep=True) if flow else None

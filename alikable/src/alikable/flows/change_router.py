@@ -24,19 +24,20 @@ For each message the Chat Agent picks one action:
 Before it runs, a change job saves a checkpoint of the build unless one is already
 kept, so the checkpoint is always the last approved build. Approving clears it.
 
-Change, deploy and rollback jobs run one at a time in the order they were sent, so
-two jobs never edit the site at once. Check jobs only report, so they run in parallel.
+Each chat works on its own project folder, output/projects/<chat_id>/ (projects.py).
+A chat's change, deploy and rollback jobs run one at a time in the order they were
+sent, so two jobs never edit its site at once; each chat has its own runner, so
+different projects build at the same time. Check jobs only report, so they run in
+parallel on a shared runner.
 
 The intake flow (flows/intake.py) writes the approved spec and hands its chat_id over
-to this chat (main.py). Not built yet (placeholders below, marked TODO):
+to this chat (the UI opens it). Not built yet (placeholders below, marked TODO):
   - the first build between the intake flow and this chat (only the design runs)
   - the planning and implementation crews in the change pipeline
-Until then the chat reads whatever is in output/site_spec.json, output/design/ and
-output/site/.
+Until then the chat reads whatever spec, design and site its project folder holds.
 """
 
 import threading
-import uuid
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -47,17 +48,17 @@ from pydantic import PrivateAttr
 
 from alikable.crew import Alikable, chat_memory_read_only
 from alikable.flows.create_deploy_guide import run_deploy_guide_phase
-from alikable.flows.phases import SITE_SPEC, run_design_phase
+from alikable.flows.phases import run_design_phase
 from alikable.flows.polish import run_polish_phase
 from alikable.models import (HOST_NAMES, ChatReply, ChatResponse, ChatState, Job, PipelineState, RouteDecision,
                              utc_now)
+from alikable.projects import Project
 from alikable.site_files import clear_checkpoint, restore_checkpoint, save_checkpoint
 
-DESIGN = Path("output/design/design.json")
 HISTORY_LIMIT = 20   # chat lines passed to the Chat Agent
+SPEAKERS = {"User: ": "user", "Assistant: ": "assistant"}   # history line prefix -> chat role
 
-_check_runner = ThreadPoolExecutor(max_workers=3, thread_name_prefix="check")
-_build_runner = ThreadPoolExecutor(max_workers=1, thread_name_prefix="build")  # changes, deploys and rollbacks, one at a time
+_check_runner = ThreadPoolExecutor(max_workers=3, thread_name_prefix="check")   # shared by every chat
 
 
 def _read(path: Path) -> str:
@@ -71,14 +72,18 @@ class ChangePipelineFlow(Flow[PipelineState]):
 
     _on_step: Callable[[str], None] | None = PrivateAttr(default=None)   # set by the change job
 
+    @property
+    def project(self) -> Project:
+        return Project(self.state.chat_id)
+
     def _step(self, step: str) -> None:
         if self._on_step:
             self._on_step(step)
 
     @start()
     def load_files(self):
-        self.state.site_spec = _read(SITE_SPEC)
-        self.state.design = _read(DESIGN)
+        self.state.site_spec = _read(self.project.site_spec)
+        self.state.design = _read(self.project.design_json)
 
     @router(load_files)
     def start_at(self) -> Literal["planning", "design", "implementation", "polish"]:
@@ -88,19 +93,19 @@ class ChangePipelineFlow(Flow[PipelineState]):
     def run_planning(self):
         self._step("planning crew")
         # TODO(planning crew): call run_planning_phase (flows/intake.py) with the current
-        # spec and the change as its summary, then reload site_spec from SITE_SPEC.
+        # spec and the change as its summary, then reload site_spec from project.site_spec.
         self.state.notes.append("Planning crew not built yet; skipped.")
 
     @listen(or_("design", run_planning))
     def run_design(self):
         self._step("design crew")
         if not self.state.site_spec:
-            self.state.notes.append(f"Design skipped: no site spec at {SITE_SPEC}.")
+            self.state.notes.append(f"Design skipped: no site spec at {self.project.site_spec}.")
             return
         spec = self.state.site_spec
         if self.state.route in ("planning", "design"):   # the change is not in the spec yet
             spec += f"\n\nRequested change: {self.state.change_request}"
-        self.state.design, approved = run_design_phase(spec)
+        self.state.design, approved = run_design_phase(self.project, spec)
         self.state.notes.append(
             "Design approved by the Design Critic." if approved
             else "Design not approved after 3 rounds; kept the last version."
@@ -116,6 +121,7 @@ class ChangePipelineFlow(Flow[PipelineState]):
     def run_polish(self):
         self._step("polish crew")
         report = run_polish_phase(
+            self.project,
             self.state.site_spec,
             self.state.design,
             # larger changes were already made by the crews above, so polish just re-checks them
@@ -133,6 +139,9 @@ class ChatSession:
 
     def __init__(self, chat_id: str):
         self.id = chat_id
+        self.project = Project(chat_id)
+        # changes, deploys and rollbacks of this project, one at a time
+        self.build_runner = ThreadPoolExecutor(max_workers=1, thread_name_prefix=f"build-{chat_id[:8]}")
         self.awaiting_approval = False
         self.jobs: list[Job] = []
         self.flow = ChatFlow()
@@ -183,6 +192,12 @@ class ChatSession:
             parts.append("Finished since the last message:\n" + "\n\n".join(finished))
         return "\n\n".join(parts) or "None"
 
+    def messages(self) -> list[dict[str, str]]:
+        """The chat so far as {role, content} messages, oldest first, for the UI."""
+        lines = list(self.flow.state.history)
+        return [{"role": role, "content": line.removeprefix(prefix)}
+                for line in lines for prefix, role in SPEAKERS.items() if line.startswith(prefix)]
+
     def response(self, reply: str = "") -> ChatResponse:
         with self._lock:
             jobs = [j.model_copy() for j in self.jobs]
@@ -200,10 +215,10 @@ class ChatFlow(Flow[ChatState]):
     @start()
     def chat(self):
         session: ChatSession = self._session
-        result = Alikable().chat_crew(session.id).kickoff(inputs={
+        result = Alikable(session.project).chat_crew(session.id).kickoff(inputs={
             "message": self.state.message,
             "history": "\n".join(self.state.history[-HISTORY_LIMIT:]) or "None",
-            "site_spec": _read(SITE_SPEC) or "None yet",
+            "site_spec": _read(session.project.site_spec) or "None yet",
             "awaiting_approval": "yes" if session.awaiting_approval else "no",
             "jobs": session.jobs_for_chat(),
         })
@@ -228,20 +243,22 @@ class ChatFlow(Flow[ChatState]):
 
     @listen("check")
     def start_checks(self):
-        roles = Alikable().agents_config
+        session: ChatSession = self._session
+        roles = Alikable(session.project).agents_config
         for name in self.state.check_agents:
             role = roles[name]["role"].strip()  # type: ignore[index]
-            self._session.start_job(
+            session.start_job(
                 "check", f"{role} check",
-                lambda job, name=name, question=self.state.check_question: _run_check(name, question, self._session.id),
+                lambda job, name=name, question=self.state.check_question: _run_check(name, question, session.project),
                 _check_runner,
             )
 
     @router("change")
     def route_change(self) -> Literal["routed", "clarify"]:
-        result = Alikable().change_router_crew(self._session.id).kickoff(inputs={
+        session: ChatSession = self._session
+        result = Alikable(session.project).change_router_crew(session.id).kickoff(inputs={
             "change_request": self.state.change_request,
-            "site_spec": _read(SITE_SPEC) or "None yet",
+            "site_spec": _read(session.project.site_spec) or "None yet",
         })
         route = result.pydantic
         if not isinstance(route, RouteDecision):   # unstructured answer: ask the user instead
@@ -262,14 +279,14 @@ class ChatFlow(Flow[ChatState]):
         session.awaiting_approval = False   # a new change replaces the build waiting for approval
 
         def work(job: Job) -> str:
-            save_checkpoint()
+            save_checkpoint(session.project)
             pipeline = ChangePipelineFlow()
             pipeline._on_step = lambda step: session.update(job, step=step)
-            pipeline.kickoff(inputs={"route": route, "change_request": request})
+            pipeline.kickoff(inputs={"chat_id": session.id, "route": route, "change_request": request})
             session.awaiting_approval = True
             return " ".join(pipeline.state.notes) + " Waiting for approval or a change."
 
-        session.start_job("change", f"Change from the {route} crew: {request}", work, _build_runner)
+        session.start_job("change", f"Change from the {route} crew: {request}", work, session.build_runner)
 
     @listen("approve")
     def start_deploy(self):
@@ -279,11 +296,12 @@ class ChatFlow(Flow[ChatState]):
         host, detail = self.state.deploy_host, self.state.deploy_detail
 
         def work(job: Job) -> str:
-            clear_checkpoint()   # this build is approved
-            result = run_deploy_guide_phase(host, detail, on_step=lambda step: session.update(job, step=step))
+            clear_checkpoint(session.project)   # this build is approved
+            result = run_deploy_guide_phase(session.project, host, detail,
+                                            on_step=lambda step: session.update(job, step=step))
             return result.summary()
 
-        session.start_job("deploy", f"Deploy guide for {HOST_NAMES[host]}", work, _build_runner)
+        session.start_job("deploy", f"Deploy guide for {HOST_NAMES[host]}", work, session.build_runner)
 
     @listen("reject")
     def start_rollback(self):
@@ -291,25 +309,25 @@ class ChatFlow(Flow[ChatState]):
         session.awaiting_approval = False
 
         def work(job: Job) -> str:
-            if restore_checkpoint():
+            if restore_checkpoint(session.project):
                 return "Restored the last approved build; every change since was undone."
             return "There was no checkpoint to restore, so nothing changed."
 
-        session.start_job("rollback", "Undo changes since the last approval", work, _build_runner)
+        session.start_job("rollback", "Undo changes since the last approval", work, session.build_runner)
 
 
-def _run_check(agent_name: str, question: str, chat_id: str) -> str:
+def _run_check(agent_name: str, question: str, project: Project) -> str:
     """Run one reviewer on its own, outside any crew. Read-only: it reports, never edits,
     and it recalls the chat's memories but saves none."""
     # Recalled here rather than set as agent memory: Agent.kickoff() saves its result to
     # memory even when the memory is read-only.
-    recalled = chat_memory_read_only(chat_id).recall(question, limit=5)
+    recalled = chat_memory_read_only(project.chat_id).recall(question, limit=5)
     preferences = "\n".join(f"- {m.record.content}" for m in recalled) or "None"
-    reviewer = getattr(Alikable(), agent_name)()
+    reviewer = getattr(Alikable(project), agent_name)()
     result = reviewer.kickoff(
         f"{question}\n\nReport your findings only; do not change any files."
         f"\n\nWhat the user has said in this chat: {preferences}"
-        f"\n\nSite spec: {_read(SITE_SPEC) or 'None yet'}\n\nDesign: {_read(DESIGN) or 'None yet'}"
+        f"\n\nSite spec: {_read(project.site_spec) or 'None yet'}\n\nDesign: {_read(project.design_json) or 'None yet'}"
     )
     return result.raw
 
@@ -329,7 +347,7 @@ def _get_session(chat_id: str) -> ChatSession:
 
 def run_chat(message: str, chat_id: str) -> ChatResponse:
     """Send one user message and return the reply. chat_id comes from the intake form
-    (app.py) and is the same for every message in the chat."""
+    (flows/intake.py) and is the same for every message in the chat."""
     session = _get_session(chat_id)
     with session.turn_lock:
         session.flow.kickoff(inputs={"message": message, "reply": ""})
@@ -341,28 +359,6 @@ def chat_status(chat_id: str) -> ChatResponse:
     return _get_session(chat_id).response()
 
 
-def main(chat_id: str | None = None):
-    """Terminal stand-in for the UI. Type 'status' to refresh jobs, 'exit' to quit.
-    chat_id comes from the intake flow (main.py); without one this starts a new chat."""
-    from dotenv import load_dotenv
-
-    load_dotenv()
-    chat_id = chat_id or uuid.uuid4().hex
-    print("Alikable chat. Type 'status' to see jobs, 'exit' to quit.")
-    while (message := input("\nYou: ").strip()).lower() not in {"exit", "quit"}:
-        if message.lower() == "status":
-            response = chat_status(chat_id)
-        elif message:
-            response = run_chat(message, chat_id)
-            print(f"\nAlikable: {response.reply}")
-        else:
-            continue
-        for job in response.jobs:
-            step = f" ({job.step})" if job.step else ""
-            print(f"  [{job.status}{step}] {job.title} - job {job.id}")
-        if response.awaiting_approval:
-            print("  Build is waiting for approval.")
-
-
-if __name__ == "__main__":
-    main()
+def chat_messages(chat_id: str) -> list[dict[str, str]]:
+    """The chat so far as {role, content} messages, for the UI's chat panel."""
+    return _get_session(chat_id).messages()

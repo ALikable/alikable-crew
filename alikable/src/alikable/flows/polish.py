@@ -1,7 +1,7 @@
 """
 Polish & Iterate phase (the Polish & Iterate crew in Documents/Agent_Diagram.png).
 
-Each round the QA Tester and the Consistency Auditor check the site in output/site/
+Each round the QA Tester and the Consistency Auditor check the project's site/
 at the same time, then the Fixer handles their findings one at a time, highest
 severity first. A small user change routed straight to polish is fixed first. After
 every fix the Build Checker runs again, and a fix that adds build errors is rolled
@@ -17,7 +17,6 @@ taken before the change (see site_files.py).
 import shutil
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
-from pathlib import Path
 from typing import Literal
 
 from crewai.flow.flow import Flow, listen, or_, router, start
@@ -26,11 +25,10 @@ from pydantic import PrivateAttr
 from alikable.crew import Alikable
 from alikable.models import (AuditReport, BugReport, FixRecord, FixResult, PolishReport, PolishState, QAReport,
                              Suggestion)
-from alikable.site_files import SITE_DIR, apply_changes, read_site, restore
+from alikable.projects import Project
+from alikable.site_files import apply_changes, read_site, restore
 from alikable.tools.build_checker import check_build
 
-REPORT = Path("output/polish_report.json")
-DESIGN_DIR = Path("output/design")
 SEVERITY_ORDER = {"high": 0, "medium": 1, "low": 2}
 
 
@@ -51,6 +49,10 @@ class PolishFlow(Flow[PolishState]):
 
     _on_step: Callable[[str], None] | None = PrivateAttr(default=None)   # set by the change job
 
+    @property
+    def project(self) -> Project:
+        return Project(self.state.chat_id)
+
     def _step(self, step: str) -> None:
         print(f"\n===== POLISH: {step} =====\n")
         if self._on_step:
@@ -58,20 +60,21 @@ class PolishFlow(Flow[PolishState]):
 
     @start()
     def load_build(self):
-        # TODO(implementation crew): it will write output/site/. Until then, polish the
-        # design's page layouts so this phase can be run and tested.
-        if not any(SITE_DIR.glob("*.html")) and DESIGN_DIR.exists():
-            SITE_DIR.mkdir(parents=True, exist_ok=True)
-            for file in DESIGN_DIR.iterdir():
+        # TODO(implementation crew): it will write the project's site/. Until then, polish
+        # the design's page layouts so this phase can be run and tested.
+        site_dir, design_dir = self.project.site_dir, self.project.design_dir
+        if not any(site_dir.glob("*.html")) and design_dir.exists():
+            site_dir.mkdir(parents=True, exist_ok=True)
+            for file in design_dir.iterdir():
                 if file.suffix in (".html", ".css") and file.name != "components.html":
-                    shutil.copy2(file, SITE_DIR / file.name)
+                    shutil.copy2(file, site_dir / file.name)
 
     @listen(or_(load_build, "recheck"))
     def check(self):
         final = self.state.round >= self.state.max_rounds
         self._step("polish final check" if final else f"polish round {self.state.round + 1}: checking")
-        crews = Alikable()
-        files = read_site()
+        crews = Alikable(self.project)
+        files = read_site(self.project)
         with ThreadPoolExecutor(max_workers=2) as pool:   # QA and the audit do not depend on each other
             qa = pool.submit(crews.qa_crew().kickoff, inputs={
                 "site_spec": self.state.site_spec, "site_files": files,
@@ -112,10 +115,10 @@ class PolishFlow(Flow[PolishState]):
 
     def _fix(self, label: str, problem: str) -> FixRecord:
         """Ask the Fixer for one fix, write it, and roll it back if it breaks the build."""
-        errors_before = set(check_build().errors)
+        errors_before = set(check_build(self.project.site_dir).errors)
         try:
-            result = Alikable().fix_crew().kickoff(inputs={
-                "issue": problem, "site_spec": self.state.site_spec, "site_files": read_site(),
+            result = Alikable(self.project).fix_crew().kickoff(inputs={
+                "issue": problem, "site_spec": self.state.site_spec, "site_files": read_site(self.project),
             }).pydantic
         except Exception as e:   # one failed fix should not stop the others
             return FixRecord(issue=label, status="failed", note=f"The Fixer failed: {e}")
@@ -126,11 +129,11 @@ class PolishFlow(Flow[PolishState]):
 
         changed = [c.path for c in result.files]
         try:
-            backup = apply_changes(result.files)
+            backup = apply_changes(self.project, result.files)
         except ValueError as e:
             return FixRecord(issue=label, status="failed", files=changed, note=f"Not written: {e}")
 
-        new_errors = [e for e in check_build().errors if e not in errors_before]
+        new_errors = [e for e in check_build(self.project.site_dir).errors if e not in errors_before]
         if new_errors:
             restore(backup)
             return FixRecord(issue=label, status="reverted", files=changed,
@@ -139,36 +142,38 @@ class PolishFlow(Flow[PolishState]):
 
     @listen("done")
     def finish(self) -> PolishReport:
-        build = check_build()
+        build = check_build(self.project.site_dir)
         report = self.state.report
         report.rounds = self.state.round
         report.build_ok, report.build_errors = build.ok, build.errors
         report.open_bugs, report.open_suggestions = self.state.bugs, self.state.suggestions
-        REPORT.parent.mkdir(parents=True, exist_ok=True)
-        REPORT.write_text(report.model_dump_json(indent=2), encoding="utf-8")
+        self.project.polish_report.parent.mkdir(parents=True, exist_ok=True)
+        self.project.polish_report.write_text(report.model_dump_json(indent=2), encoding="utf-8")
         return report
 
 
-def run_polish_phase(site_spec: str, design: str = "", change_request: str = "", max_rounds: int = 1,
-                     on_step: Callable[[str], None] | None = None) -> PolishReport:
-    """Polish output/site/ and return what was fixed and what is still open."""
+def run_polish_phase(project: Project, site_spec: str, design: str = "", change_request: str = "",
+                     max_rounds: int = 1, on_step: Callable[[str], None] | None = None) -> PolishReport:
+    """Polish the project's site/ and return what was fixed and what is still open."""
     flow = PolishFlow()
     flow._on_step = on_step
-    flow.kickoff(inputs={"site_spec": site_spec, "design": design,
+    flow.kickoff(inputs={"chat_id": project.chat_id, "site_spec": site_spec, "design": design,
                          "change_request": change_request, "max_rounds": max_rounds})
     return flow.state.report
 
 
 if __name__ == "__main__":
-    # Test run on output/site/ (or the design layouts) with the sample spec.
+    # Test run on a project's site/ (or its design layouts) with the sample spec:
+    #   uv run python -m alikable.flows.polish <chat_id> [rounds]
     import sys
+    from pathlib import Path
 
     from dotenv import load_dotenv
 
     load_dotenv()
+    project = Project(sys.argv[1])
     spec = Path("examples/site_spec_task_manager.json").read_text(encoding="utf-8")
-    design = Path("output/design/design.json")
-    rounds = int(sys.argv[1]) if len(sys.argv) > 1 else 1
-    report = run_polish_phase(spec, design.read_text(encoding="utf-8") if design.exists() else "",
-                              max_rounds=rounds)
-    print(f"\n{report.summary()}\nReport saved to: {REPORT}")
+    rounds = int(sys.argv[2]) if len(sys.argv) > 2 else 1
+    report = run_polish_phase(project, spec, project.design_json.read_text(encoding="utf-8")
+                              if project.design_json.exists() else "", max_rounds=rounds)
+    print(f"\n{report.summary()}\nReport saved to: {project.polish_report}")

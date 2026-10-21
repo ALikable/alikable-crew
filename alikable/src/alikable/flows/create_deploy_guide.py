@@ -3,11 +3,11 @@ Deploy Guide phase (the Deploy Guide crew in Documents/Agent_Diagram.png).
 
 Runs after the user approves the build (HITL #3):
   1. collect the approved spec, js/config.js and the polish report
-  2. the Release Builder packages output/site/ as output/site.zip and smoke-tests it
+  2. the Release Builder packages the project's site/ as its site.zip and smoke-tests it
   3. the Deploy Guide Writer writes DEPLOY.md for the host and detail the user picked
   4. Python checks the guide: the required headings, no secrets, and only files that
      are in the package. A guide that fails goes back to the writer, max 2 rounds.
-  5. DEPLOY.md is saved to output/DEPLOY.md and added to site.zip next to index.html
+  5. DEPLOY.md is saved in the project folder and added to site.zip next to index.html
 
 The site was approved, so this phase never edits it. Build or smoke-test failures
 go into the guide's Known problems section, and the user fixes them with a change
@@ -23,14 +23,11 @@ from crewai.flow.flow import Flow, listen, or_, router, start
 from pydantic import PrivateAttr
 
 from alikable.crew import Alikable
-from alikable.flows.phases import SITE_SPEC
-from alikable.flows.polish import REPORT as POLISH_REPORT
 from alikable.models import HOST_NAMES, DeployGuideResult, DeployGuideState, GuideDetail, PolishReport
-from alikable.site_files import OUTPUT, SITE_DIR
+from alikable.projects import Project
 from alikable.tools.build_checker import SECRET_PATTERNS
-from alikable.tools.release_builder import RELEASE_ZIP, add_to_release, build_release
+from alikable.tools.release_builder import add_to_release, build_release
 
-GUIDE = OUTPUT / "DEPLOY.md"
 DEPLOY_NOTES = Path("knowledge/deploy_guides.txt")
 
 DETAIL_RULES: dict[str, str] = {
@@ -43,7 +40,7 @@ DETAIL_RULES: dict[str, str] = {
                 "every troubleshooting item from the deploy notes.",
 }
 # Files the guide may name besides the ones in the package
-GUIDE_FILES = {"DEPLOY.md", RELEASE_ZIP.name}
+GUIDE_FILES = {"DEPLOY.md", "site.zip"}
 FILE_REF = re.compile(r"`\.?/?([\w-][\w./-]*\.(?:html|css|js|mjs|json|md|zip|png|jpe?g|svg|gif|webp|ico|txt))`")
 
 
@@ -103,6 +100,10 @@ class DeployGuideFlow(Flow[DeployGuideState]):
 
     _on_step: Callable[[str], None] | None = PrivateAttr(default=None)   # set by the deploy job
 
+    @property
+    def project(self) -> Project:
+        return Project(self.state.chat_id)
+
     def _step(self, step: str) -> None:
         print(f"\n===== DEPLOY: {step} =====\n")
         if self._on_step:
@@ -111,17 +112,18 @@ class DeployGuideFlow(Flow[DeployGuideState]):
     @start()
     def collect_inputs(self):
         self._step("collecting the spec, config and polish report")
-        self.state.site_spec = _read(SITE_SPEC) or "None"
-        self.state.config_js = _read(SITE_DIR / "js" / "config.js")
+        project = self.project
+        self.state.site_spec = _read(project.site_spec) or "None"
+        self.state.config_js = _read(project.site_dir / "js" / "config.js")
         self.state.uses_api = bool(re.search(r"""API_BASE_URL\s*=\s*['"][^'"]+['"]""", self.state.config_js)) \
             or '"endpoints"' in self.state.site_spec
-        if POLISH_REPORT.exists():
-            self.state.polish_summary = PolishReport.model_validate_json(_read(POLISH_REPORT)).summary()
+        if project.polish_report.exists():
+            self.state.polish_summary = PolishReport.model_validate_json(_read(project.polish_report)).summary()
 
     @listen(collect_inputs)
     def package(self):
         self._step("release builder: packaging and smoke test")
-        self.state.release = build_release()
+        self.state.release = build_release(self.project.site_dir, self.project.release_zip)
 
     @listen(or_(package, "rewrite"))
     def write_guide(self):
@@ -134,7 +136,7 @@ class DeployGuideFlow(Flow[DeployGuideState]):
             feedback = "\n".join(f"{i}. {p}" for i, p in enumerate(self.state.problems, 1)) \
                 + f"\n\nYour previous guide:\n{self.state.guide}"
 
-        result = Alikable().deploy_crew().kickoff(inputs={
+        result = Alikable(self.project).deploy_crew().kickoff(inputs={
             "host_name": HOST_NAMES[self.state.host],
             "headings": "; ".join(headings),
             "detail": self.state.detail,
@@ -158,25 +160,26 @@ class DeployGuideFlow(Flow[DeployGuideState]):
     @listen("done")
     def save(self) -> DeployGuideResult:
         self._step("saving DEPLOY.md and site.zip")
-        GUIDE.parent.mkdir(parents=True, exist_ok=True)
-        GUIDE.write_text(self.state.guide + "\n", encoding="utf-8")
-        add_to_release(GUIDE.name, self.state.guide + "\n")
+        guide = self.project.guide
+        guide.parent.mkdir(parents=True, exist_ok=True)
+        guide.write_text(self.state.guide + "\n", encoding="utf-8")
+        add_to_release(guide.name, self.state.guide + "\n", self.project.release_zip)
         return self.result()
 
     def result(self) -> DeployGuideResult:
         return DeployGuideResult(
-            zip_path=RELEASE_ZIP.as_posix(), guide_path=GUIDE.as_posix(), guide=self.state.guide,
+            zip_path=self.project.release_zip.as_posix(), guide_path=self.project.guide.as_posix(), guide=self.state.guide,
             host=self.state.host, detail=self.state.detail,
             release_ok=self.state.release.ok, guide_problems=self.state.problems,
         )
 
 
-def run_deploy_guide_phase(host: str = "netlify", detail: str = "standard",
+def run_deploy_guide_phase(project: Project, host: str = "netlify", detail: str = "standard",
                            on_step: Callable[[str], None] | None = None) -> DeployGuideResult:
-    """Package output/site/ as output/site.zip and write output/DEPLOY.md (also inside the zip).
+    """Package the project's site/ as its site.zip and write its DEPLOY.md (also inside the zip).
 
     host: netlify, vercel, github_pages or s3. detail: quick, standard or detailed.
-    Raises FileNotFoundError if output/site/ has no pages.
+    Raises FileNotFoundError if the project's site/ has no pages.
     """
     if host not in HOST_NAMES:
         raise ValueError(f"Unknown host {host!r}; use one of {', '.join(HOST_NAMES)}")
@@ -184,16 +187,17 @@ def run_deploy_guide_phase(host: str = "netlify", detail: str = "standard",
         raise ValueError(f"Unknown detail {detail!r}; use one of {', '.join(get_args(GuideDetail))}")
     flow = DeployGuideFlow()
     flow._on_step = on_step
-    flow.kickoff(inputs={"host": host, "detail": detail})
+    flow.kickoff(inputs={"chat_id": project.chat_id, "host": host, "detail": detail})
     return flow.result()
 
 
 if __name__ == "__main__":
-    # Test run on output/site/:  uv run python -m alikable.flows.create_deploy_guide [host] [detail]
+    # Test run on a project's site/:
+    #   uv run python -m alikable.flows.create_deploy_guide <chat_id> [host] [detail]
     import sys
 
     from dotenv import load_dotenv
 
     load_dotenv()
-    result = run_deploy_guide_phase(*sys.argv[1:3])
+    result = run_deploy_guide_phase(Project(sys.argv[1]), *sys.argv[2:4])
     print(f"\n{result.summary()}")
