@@ -306,19 +306,43 @@ fix_task:
 
 deploy_guide_task:
   description: >
-    Package the site and smoke-test it locally, then write DEPLOY.md: step-by-step
-    instructions a beginner can follow to deploy it on a static host. Only write
-    steps you have checked against the package. Cover common static hosts, setting
-    the API base URL, and CORS for sites that call an existing API. Never deploy
-    anything yourself and never include secrets.
+    Write DEPLOY.md: step-by-step instructions a beginner can follow to deploy the
+    packaged site on {host_name} themselves. The site is already packaged as
+    site.zip and smoke-tested; the release report below says what is in the package
+    and what failed. You can run the Release Builder again to re-check the package.
+    DEPLOY.md is shipped inside site.zip, next to index.html.
+
+    Cover only {host_name}, using the deploy notes below. Only name files that are
+    in the package, exactly as listed there. If the site calls an API, say exactly
+    which line of js/config.js to change for the real API base URL, how to switch
+    off mock data if js/config.js has a switch for it, and the CORS change the
+    backend needs. Never deploy anything yourself and never include secrets, API
+    keys, tokens or account passwords (the demo login 'alikable' / 'password' for
+    mock mode is fine).
+
+    Use exactly these level-2 headings, in this order: {headings}
+
+    Detail: {detail}. {detail_rule}
+
+    If the release report lists failures, the Known problems section lists each
+    one in plain words and what to do about it.
+
+    Deploy notes: {deploy_notes}
+
+    Release report: {release_report}
+
+    js/config.js: {config_js}
+
+    Polish report: {polish_summary}
 
     Site spec: {site_spec}
+
+    Problems with your previous guide (fix exactly these and keep everything else;
+    "None" means this is the first round): {feedback}
   expected_output: >
-    DEPLOY.md formatted as markdown without '```' around the whole document.
+    DEPLOY.md formatted as markdown without '```' around the whole document,
+    starting with a level-1 title.
   agent: deploy_guide_writer
-  guardrail: >
-    Every step was tested against the package and no secrets appear in the guide.
-  output_file: output/DEPLOY.md
 
 # ---------------------------------------------------------------- Change Router
 
@@ -351,6 +375,9 @@ chat_task:
     reviewers to run in the background (qa_tester, consistency_auditor,
     code_reviewer, spec_critic, design_critic) and the question for them.
     approve: only when the build is waiting for approval and the user approves it.
+    Also note the static host they want to deploy on (netlify, vercel, github_pages
+    or s3) and how detailed a deploy guide they want (quick, standard or detailed),
+    if they said.
     reject: only when the build is waiting for approval and the user wants it undone.
     This restores the last approved build and drops every change since; if the user
     only wants part of it changed, choose change instead.

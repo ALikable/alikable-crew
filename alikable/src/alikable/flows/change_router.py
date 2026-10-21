@@ -17,7 +17,8 @@ For each message the Chat Agent picks one action:
              job runs that crew and every crew after it:
                planning -> design -> implementation -> polish
              after which the build waits for approval
-  approve -> a deploy job writes DEPLOY.md
+  approve -> a deploy job packages site.zip and writes DEPLOY.md for the host and
+             detail the user asked for (flows/create_deploy_guide.py)
   reject  -> a rollback job restores the last approved build (site_files.py)
 
 Before it runs, a change job saves a checkpoint of the build unless one is already
@@ -28,7 +29,7 @@ two jobs never edit the site at once. Check jobs only report, so they run in par
 
 Not built yet (placeholders below, marked TODO):
   - the intake flow, which makes the first build and then hands over to this chat
-  - the planning, implementation and deploy guide crews
+  - the planning and implementation crews in the change pipeline
 Until then the chat reads whatever is in output/site_spec.json, output/design/ and
 output/site/.
 """
@@ -44,9 +45,11 @@ from crewai.flow.flow import Flow, listen, or_, router, start
 from pydantic import PrivateAttr
 
 from alikable.crew import Alikable, chat_memory_read_only
+from alikable.flows.create_deploy_guide import run_deploy_guide_phase
 from alikable.flows.phases import SITE_SPEC, run_design_phase
 from alikable.flows.polish import run_polish_phase
-from alikable.models import ChatReply, ChatResponse, ChatState, Job, PipelineState, RouteDecision, utc_now
+from alikable.models import (HOST_NAMES, ChatReply, ChatResponse, ChatState, Job, PipelineState, RouteDecision,
+                             utc_now)
 from alikable.site_files import clear_checkpoint, restore_checkpoint, save_checkpoint
 
 DESIGN = Path("output/design/design.json")
@@ -215,6 +218,7 @@ class ChatFlow(Flow[ChatState]):
         self.state.change_request = decision.change_request or self.state.message
         self.state.check_agents = list(decision.check_agents)
         self.state.check_question = decision.check_question or self.state.message
+        self.state.deploy_host, self.state.deploy_detail = decision.deploy_host, decision.deploy_detail
         self.state.history += [f"User: {self.state.message}", f"Assistant: {decision.message}"]
 
     @router(chat)
@@ -271,14 +275,14 @@ class ChatFlow(Flow[ChatState]):
         session: ChatSession = self._session
         session.awaiting_approval = False
 
+        host, detail = self.state.deploy_host, self.state.deploy_detail
+
         def work(job: Job) -> str:
             clear_checkpoint()   # this build is approved
-            session.update(job, step="deploy guide crew")
-            # TODO(deploy guide crew): not built yet. Kick it off with the current site
-            # spec; it writes output/DEPLOY.md.
-            return "Deploy Guide crew not built yet; DEPLOY.md was not written."
+            result = run_deploy_guide_phase(host, detail, on_step=lambda step: session.update(job, step=step))
+            return result.summary()
 
-        session.start_job("deploy", "Deploy guide", work, _build_runner)
+        session.start_job("deploy", f"Deploy guide for {HOST_NAMES[host]}", work, _build_runner)
 
     @listen("reject")
     def start_rollback(self):
