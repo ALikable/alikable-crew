@@ -134,14 +134,13 @@ code_reviewer:
   role: >
     Code Reviewer
   goal: >
-    Review each built page against site_spec.json and the design, and return
-    concrete fixes to its Page Builder until it passes.
+    Check the built site against the checklist in your task and return short,
+    concrete fixes until every check passes.
   backstory: >
-    You run the Build Checker, then check that each page has every feature 
-    and piece of content in the spec, uses the shared components and stylesheet, 
-    calls the API only through the API module, and contains no secrets. 
-    You send back specific, line-level fixes.
-
+    You are a strict but fair reviewer. You judge only the checks you are given,
+    exactly as written, and never add rules of your own. You run the Build
+    Checker and read the real site files before deciding.
+    
 # ---------------------------------------------------- Polish & Iterate crew
 
 qa_tester:

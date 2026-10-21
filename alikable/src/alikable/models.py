@@ -67,10 +67,12 @@ class PageLayout(BaseModel):
         description=(
             "Complete HTML skeleton of this page: <!DOCTYPE html>, head with "
             '<link rel="stylesheet" href="styles.css">, and the full layout built from '
-            "the component classes. Use realistic placeholder content, no JavaScript."
+            "the component classes. Use realistic placeholder content, no JavaScript. "
+            "Use only classes from styles_css and never style attributes; hide "
+            "elements with the hidden attribute."
         )
     )
-
+        
 
 class DesignSystem(BaseModel):
     """Everything the Design System Designer produces."""
@@ -273,6 +275,17 @@ class FileChange(BaseModel):
 
 
 # ------------------------------------------------------------------------ Tools
+
+class SiteBuild(BaseModel):
+    """What an Implementation crew agent built: files for output/site/."""
+
+    files: list[FileChange] = Field(
+        description="Every file you wrote: its path in the site (e.g. index.html or js/api.js) "
+                    "and its complete contents"
+    )
+    notes: str = Field(description="One short paragraph: what you built and what the next agent must know")
+
+
 
 class BuildCheck(BaseModel):
     ok: bool

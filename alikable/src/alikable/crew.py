@@ -3,7 +3,7 @@ from crewai.project import CrewBase, agent, crew, task
 from crewai.agents.agent_builder.base_agent import BaseAgent
 from crewai.knowledge.source.text_file_knowledge_source import TextFileKnowledgeSource
 from alikable.models import DesignSystem, Interview
-from alikable.models import AuditReport, ChatReply, DesignSystem, FixResult, QAReport, RouteDecision
+from alikable.models import AuditReport, ChatReply, DesignSystem, FixResult, QAReport, RouteDecision, SiteBuild
 from alikable.tools.build_checker import BuildCheckerTool
 
 
@@ -52,6 +52,7 @@ class Alikable():
         return Agent(
             config=self.agents_config['design_system_designer'], # type: ignore[index]
             knowledge_sources=[TextFileKnowledgeSource(file_paths=["design_templates.txt"])],
+            llm="openai/gpt-5.6-luna",
             verbose=True
         )
 
@@ -75,13 +76,15 @@ class Alikable():
     def page_builder(self) -> Agent:
         return Agent(
             config=self.agents_config['page_builder'], # type: ignore[index]
+            llm="openai/gpt-5.6-luna",
             verbose=True
         )
-
     @agent
     def code_reviewer(self) -> Agent:
         return Agent(
             config=self.agents_config['code_reviewer'], # type: ignore[index]
+            tools=[BuildCheckerTool()],
+            llm="openai/gpt-5.6-luna",
             verbose=True
         )
 
@@ -172,12 +175,14 @@ class Alikable():
     def api_integration_task(self) -> Task:
         return Task(
             config=self.tasks_config['api_integration_task'], # type: ignore[index]
+            output_pydantic=SiteBuild,
         )
 
     @task
     def page_build_task(self) -> Task:
         return Task(
             config=self.tasks_config['page_build_task'], # type: ignore[index]
+            output_pydantic=SiteBuild,
         )
 
     @task
@@ -256,12 +261,13 @@ class Alikable():
 
     @crew
     def implementation_crew(self) -> Crew:
-        """Builds the API module and the pages, then reviews them"""
-        return self._crew(self.api_integration_task(), self.page_build_task(),
-                          self.code_review_task())
+        """Builds the API module and the pages"""
+        return self._crew(self.api_integration_task(), self.page_build_task())
 
-    # Polish & Iterate: flows/polish.py runs QA and the audit in parallel, then the
-    # Fixer once per bug or suggestion, so each is its own crew.
+    @crew
+    def code_review_crew(self) -> Crew:
+        """Reviews the built site in output/site/"""
+        return self._crew(self.code_review_task())
 
     @crew
     def qa_crew(self) -> Crew:

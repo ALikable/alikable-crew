@@ -73,7 +73,9 @@ design_task:
   description: >
     Produce the design system for this spec, starting from the preexisting design
     templates and avoiding a generic AI-generated look. Keep everything readable so
-    the user can edit it by hand.
+    the user can edit it by hand. The page layouts use only classes defined in
+    your stylesheet, never style attributes, and hide elements with the hidden
+    attribute.
 
     Site spec: {site_spec}
 
@@ -101,64 +103,133 @@ design_review_task:
     2. Fonts: match the spec's fonts (a sans-serif request means no serif fonts).
     3. Theme: light or dark exactly as the spec says.
     4. Pages: every page in the spec has a layout.
-    5. Look: no emoji used as icons and no purple-to-blue gradients.
-    Only these 5 checks decide approval. You may list other small suggestions
+    5. Look: no emoji used as icons, no purple-to-blue gradients, no style
+       attributes in the page layouts, and the stylesheet includes
+       [hidden] { display: none !important; }.
+    6. Quality: follows the quality bar in the design templates. Every page has
+       a clear header; cards use padding from the spacing scale and a border or
+       shadow; every button, link and input has hover and focus-visible styles
+       in the stylesheet; every list has an empty state and a loading state.
+    Only these 6 checks decide approval. You may list other small suggestions
     under "Optional", but they never make the answer CHANGES NEEDED.
 
     Site spec: {site_spec}
   expected_output: >
-    First line: APPROVED only if all 5 checks PASS, otherwise CHANGES NEEDED.
-    Then the 5 checks, each PASS or FAIL with a one-line reason.
+    First line: APPROVED only if all 6 checks PASS, otherwise CHANGES NEEDED.
+    Then the 6 checks, each PASS or FAIL with a one-line reason.
     Then one concrete fix for each FAIL, and any optional suggestions.
   agent: design_critic
-  context: [design_task]
-  # ---------------------------------------------------------- Implementation crew
+  context: [design_task]  # ---------------------------------------------------------- Implementation crew
 
 api_integration_task:
   description: >
-    Write one small JavaScript module for data. If the spec lists an existing API,
-    write a fetch client for exactly those endpoints with the base URL in one config
-    value and handling for loading and error states. Otherwise write mock data with
-    the same shape so switching to a real API only changes the config. Never put
-    API keys or secrets in client code.
+    Write the data layer of the site as three plain JavaScript files (not modules:
+    no import or export).
+    js/config.js defines one global value, API_BASE_URL, from the spec (empty if
+    there is none).
+    js/mock-data.js holds all sample data as plain global values (for example
+    var MOCK_TASKS = [...]), so it is easy to find and edit.
+    js/api.js defines one global async function per endpoint in the spec, with
+    loading and error handling, and holds no sample data itself. If the spec says
+    to use mock data, or has no API, return data with exactly the same shape as
+    the real responses, so switching to the real API only changes js/config.js.
+    In mock mode, keep the tasks in localStorage, starting from js/mock-data.js the
+    first time, so added and deleted items survive a page refresh.
+    Never put API keys or secrets in the code.
+    For a mock login token use exactly the value 'demo-token', never a long string.
+    In mock mode, check tokens by comparing with the fixed text 'demo-token', never
+    with a variable set at login: every page loads the scripts again from scratch.
+    In mock mode, login accepts username 'alikable' and password 'password'.
 
     Site spec: {site_spec}
+
+    Feedback from the Code Reviewer on the previous round (fix exactly these
+    points; "None" means this is the first round):
+    {feedback}
   expected_output: >
-    The path and full contents of the JavaScript module.
+    js/config.js, js/mock-data.js and js/api.js as files with their complete
+    contents, and a short note listing the function names in js/api.js.
   agent: api_integrator
 
 page_build_task:
   description: >
-    Build every page in the spec, one after another, exactly as the spec and design
-    describe. For each page build the components it needs, then the layout using
-    those components, then the full page with its content and data from the API
-    module. Use only the shared stylesheet and allowlisted CDN libraries.
+    Build every page in the site spec as a complete HTML file, using the design's
+    page layout for that page as the starting point. The design layouts are not in
+    the site: you must return the full HTML of every page (for example index.html
+    and tasks.html) as well as its script. styles.css from the design is
+    already in the site next to the pages: link it exactly as
+    <link rel="stylesheet" href="styles.css">, use its classes and do not rewrite it.
+    Each page's JavaScript goes in its own file in js/ (for example js/tasks.js).
+    At the end of <body>, every page loads exactly these four plain scripts in
+    this order, with no type="module" and no inline scripts:
+    <script src="js/config.js"></script>
+    <script src="js/mock-data.js"></script>
+    <script src="js/api.js"></script>
+    <script src="js/<page>.js"></script>
+    Page scripts call the global functions from js/api.js directly (no import).
+    To hide an element use the hidden attribute, never a style attribute.
+    The design layouts show sample messages (errors, success, loading, empty
+    states) so you can see how they look. On the real pages these start hidden
+    and appear only when the page script shows them.
+    Use only class names that exist in styles.css, in the HTML and in the page
+    scripts. If the design layout uses a class that is not in styles.css, replace
+    it with an existing class or remove it.
+    Every feature listed for each page in the spec must work end to end, using
+    the design's elements for it:
+    - Every form is handled in the page script (event.preventDefault()) and never
+      submits to a URL; remove any action attribute from the design layout.
+    - Every data action shows loading while it runs, then success or an error
+      message, using the design's loading, success and error elements.
+    - Every list shows its empty state when it has no items.
+    - Destructive actions (such as delete) ask for confirmation first, using the
+      design's confirm dialog if it has one.
+    - After a change (add or delete), refresh the data so the page shows it.
+    - Pages that need login send the user to the login page when there is no
+      token or the API returns 401.
 
     Site spec: {site_spec}
 
     Design: {design}
+
+    Feedback from the Code Reviewer on the previous round (fix exactly these
+    points; "None" means this is the first round):
+    {feedback}
   expected_output: >
-    The path and full contents of every HTML, CSS and JavaScript file for every page.
+    Every HTML page (one file per page in the spec) and every page script as files
+    with their complete contents, and a short note on how the pages use js/api.js.
   agent: page_builder
   context: [api_integration_task]
-  guardrail: >
-    The code is valid, contains no API keys or secrets, and loads scripts only from
-    allowlisted CDN libraries.
 
 code_review_task:
   description: >
-    Review each built page against the spec and the design. Check that it has every
-    feature and piece of content in the spec, uses the shared components and
-    stylesheet, calls the API only through the API module, and contains no secrets.
+    Review the built site below against the spec using this checklist. Mark each
+    check PASS or FAIL with a one-line reason.
+    1. Build: run the Build Checker tool. Any error is a FAIL.
+    2. Pages: every page in the spec exists as a file.
+    3. Scripts: every page ends by loading exactly js/config.js, js/mock-data.js,
+       js/api.js and its own js/<page>.js as plain scripts, in that order, with no
+       inline scripts and no modules; the page script gets all data by calling
+       functions from js/api.js.
+    4. Design: every page links styles.css and uses its classes, with no style
+       attributes.
+    5. Features: every feature the spec lists for each page is wired in its page
+       script: forms use event.preventDefault() and have no action attribute,
+       loading, empty, error and success elements are shown at the right time,
+       delete asks for confirmation, the data refreshes after a change, and pages
+       that need login redirect when there is no token or on a 401.
+    Only these 5 checks decide approval. Do not judge anything else.
+    styles.css is the approved design and cannot be changed: every fix must be
+    in the pages or their scripts, using classes that already exist in styles.css.
 
     Site spec: {site_spec}
 
-    Design: {design}
+    Site files: {site_files}
   expected_output: >
-    The single word PASS, or line-level fixes grouped by page.
-  agent: code_reviewer
-  context: [api_integration_task, page_build_task]
-
+    First line: APPROVED only if all 5 checks PASS, otherwise CHANGES NEEDED.
+    Then the 5 checks, each PASS or FAIL with a one-line reason.
+    Then at most 5 fixes, one line each, naming the file and the exact change.
+    Never include file contents.
+  agent: code_reviewer  
 # ---------------------------------------------------------- Polish & Iterate crew
 
 qa_task:

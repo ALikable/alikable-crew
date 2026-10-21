@@ -13,12 +13,16 @@ from pathlib import Path
 from crewai import Crew
 from crewai.crews.crew_output import CrewOutput
 
+import shutil
+
 from alikable.crew import Alikable
-from alikable.models import DesignSystem, Interview
+from alikable.models import DesignSystem, FileChange, Interview, SiteBuild
+from alikable.site_files import SITE_DIR, apply_changes, read_site
 
 REVIEW_LOG = Path("output/design_review_log.md")
 SPEC_REVIEW_LOG = Path("output/spec_review_log.md")
 DESIGN_DIR = Path("output/design")
+CODE_REVIEW_LOG = Path("output/code_review_log.md")
 
 
 def is_approved(review: str) -> bool:
@@ -108,13 +112,81 @@ def run_design_phase(site_spec: str, max_rounds: int = 3) -> tuple[str, bool]:
     save_design_files(result.tasks_output[0].pydantic)  # the designer's output as a DesignSystem
     return result.tasks_output[0].raw, approved          # designer's output (as JSON text)
 
+def collect_files(result: CrewOutput) -> list[FileChange]:
+    """All files from the builders' answers (API Integrator, then Page Builder)."""
+    files: list[FileChange] = []
+    for task_output in result.tasks_output:
+        if isinstance(task_output.pydantic, SiteBuild):
+            files += task_output.pydantic.files
+            print(f"{task_output.agent} returned: {[f.path for f in task_output.pydantic.files]}")
+        else:
+            print(f"WARNING: {task_output.agent} did not return files in the SiteBuild shape.")
+    # styles.css always comes from the design, so a builder can't overwrite it
+    return [f for f in files if f.path.strip("/") != "styles.css"]
+
+def reset_site() -> None:
+    """Empty output/site/ and put the design's styles.css back, so no old files are left."""
+    shutil.rmtree(SITE_DIR, ignore_errors=True)
+    SITE_DIR.mkdir(parents=True)
+    shutil.copy2(DESIGN_DIR / "styles.css", SITE_DIR / "styles.css")
+    # Safety rule: the hidden attribute always wins, even over display: flex
+    with open(SITE_DIR / "styles.css", "a", encoding="utf-8") as css:
+        css.write("\n[hidden] { display: none !important; }\n")
+                
+def run_implementation_phase(site_spec: str, design: str, max_rounds: int = 3) -> bool:
+    """Builds the site into output/site/ and loops on the Code Reviewer. Returns approved."""
+    feedback = "None"   # first round: no feedback yet
+    log = "# Code review log\n"
+
+    for round_no in range(1, max_rounds + 1):
+        print(f"\n===== IMPLEMENTATION ROUND {round_no} of {max_rounds} =====\n")
+
+        # 1. The builders write the code (as structured output, not files yet)
+        build = Alikable().implementation_crew().kickoff(
+            inputs={"site_spec": site_spec, "design": design, "feedback": feedback}
+        )
+
+        # 2. Python empties output/site/ and saves the new files
+        files = collect_files(build)
+        reset_site()
+        apply_changes(files)
+        print(f"Saved {len(files)} files to {SITE_DIR}/")
+
+        # 3. The reviewer checks the real files on disk
+        review = Alikable().code_review_crew().kickoff(
+            inputs={"site_spec": site_spec, "design": design, "site_files": read_site()}
+        ).raw
+
+        print(f"\n----- CODE REVIEWER, ROUND {round_no} -----\n{review}\n")
+        log += f"\n## Round {round_no}\n\n{review}\n"
+
+        if is_approved(review):
+            print(f"Site APPROVED in round {round_no}.")
+            CODE_REVIEW_LOG.write_text(log, encoding="utf-8")
+            return True
+
+        feedback = review   # reviewer's fixes go into the next round
+
+    print(f"Not approved after {max_rounds} rounds; keeping the last build.")
+    CODE_REVIEW_LOG.write_text(log, encoding="utf-8")
+    return False
 
 if __name__ == "__main__":
-    # Test run with the sample spec until the Planning crew provides the real one.
+    # Test runs with the sample spec until the Planning crew provides the real one.
+    #   uv run python -m alikable.flows.phases                 -> design phase
+    #   uv run python -m alikable.flows.phases implementation  -> implementation phase
+    import sys
     from dotenv import load_dotenv
 
     load_dotenv()
     spec = Path("examples/site_spec_task_manager.json").read_text(encoding="utf-8")
-    design, approved = run_design_phase(spec)
-    print(f"\nApproved: {approved}. Design saved to output/design/")
-    print(f"Review log saved to: {REVIEW_LOG}")
+
+    if len(sys.argv) > 1 and sys.argv[1] == "implementation":
+        design = Path("output/design/design.json").read_text(encoding="utf-8")
+        approved = run_implementation_phase(spec, design)
+        print(f"\nApproved: {approved}. Site saved to {SITE_DIR}/")
+        print(f"Review log saved to: {CODE_REVIEW_LOG}")
+    else:
+        design, approved = run_design_phase(spec)
+        print(f"\nApproved: {approved}. Design saved to output/design/")
+        print(f"Review log saved to: {REVIEW_LOG}")

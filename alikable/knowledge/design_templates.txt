@@ -10,6 +10,19 @@ How to use: pick the template closest to the user's look and feel, then adapt co
 - Comment every token with why it was chosen, so the user can edit it by hand.
 - Avoid the generic AI look: no purple-to-blue gradients by default, no glassmorphism, no emoji as icons, no centered text for long paragraphs, no oversized hero with a stock illustration. Choose one accent color and use it sparingly.
 - Fonts come from Google Fonts or the system font stack only.
+- The stylesheet always includes [hidden] { display: none !important; } so the hidden attribute works even on components that set display.
+
+[Design templates | Quality bar for every design]
+- Every page has a clear header: the app name or page title at the top, one large heading with smaller supporting text below it.
+- Use the spacing scale generously: at least --space-5 inside cards and --space-6 between sections. Nothing should feel cramped.
+- Give the page depth: cards and the login card use the surface color with a border or --shadow-1 and --radius-md, on a page background that is slightly different from the cards.
+- Center the main content with the shared container. The login card is not inside the container: it is centered on its own in the middle of the page, horizontally and vertically.
+- Every button, link and input has hover, focus-visible and active styles; buttons change shade slightly on hover and show a clear focus ring.
+- Lists of items are cards or clean rows: the title is the most prominent text, status is a small badge with a text label (not color alone), and actions sit together on the right.
+- Every list has a friendly empty state (a short message and the main action button) and a loading state.
+- Icons are simple inline SVGs (24px viewBox, stroke currentColor), used consistently. Never emoji.
+- Body text is at least 1rem; headings use the heading font and the type scale; muted text is only for secondary information.
+- Use short transitions (150 to 200ms) on color and shadow, turned off inside @media (prefers-reduced-motion: reduce).
 
 [Design templates | Template A: Clean Professional]
 - Best for: business tools, admin panels, internal dashboards, B2B apps.
@@ -56,8 +69,7 @@ How to use: pick the template closest to the user's look and feel, then adapt co
 - Reuse rule: if two pages need the same element, it is one component with variants, not two components.
 
 [Design templates | Layout patterns by page type]
-- Login: centered card, max width 400px, app name above the form, error alert above the fields.
-- Dashboard: page title, a row of 2 to 4 summary cards, then a recent-items list.
+- Login: a card centered horizontally and vertically on the page (a full-height wrapper using display: grid and place-items: center, with the card inside it), max width 400px, app name above the form, error alert above the fields, full-width sign-in button.- Dashboard: page title, a row of 2 to 4 summary cards, then a recent-items list.
 - List: page title with the main action button on the right, optional search or filter row, then the table or card list.
 - Detail: back link, item title, fields in a two-column definition list on desktop (one column on mobile), actions at the bottom.
 - Form: page title, single column of fields, max width 560px, primary submit button and a secondary cancel link.
