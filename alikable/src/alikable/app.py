@@ -1,10 +1,11 @@
 """
-Gradio UI for the start of the Flow: intake form -> input guardrail -> Planning crew -> HITL #1.
+Gradio UI for the start of the Flow: intake form -> input guardrail -> Planning crew -> HITL #1 -> Design crew.
 
 The Discovery Interviewer asks its questions one tab each, as options to pick from,
 plus Other for a custom answer. When nothing important is unclear, or after MAX_ROUNDS,
 the Planning crew drafts the spec. The user approves it (saved to output/site_spec.json),
-edits it by hand, or describes changes for the Planning crew. Run from the project root: uv run ui
+edits it by hand, or describes changes for the Planning crew. Approving starts the Design
+crew on output/site_spec.json, which saves the design to output/design/. Run from the project root: uv run ui
 
 Submitting the form starts a chat: its chat_id is the chat's memory scope (crew.py).
 Before planning, the form and the interview answers are saved to that memory, so the
@@ -18,7 +19,7 @@ import gradio as gr
 from dotenv import load_dotenv
 
 from alikable.crew import chat_memory
-from alikable.flows.phases import SITE_SPEC, run_interview, run_planning_phase, save_site_spec
+from alikable.flows.phases import DESIGN_DIR, SITE_SPEC, run_design_phase, run_interview, run_planning_phase, save_site_spec
 from alikable.guardrails import SECRET_WARNING, check_intake, redact_secrets
 from alikable.models import IntakeForm
 
@@ -134,13 +135,23 @@ with gr.Blocks(title="Alikable") as demo:
         yield from plan({**s, "summary": f"{s['summary']}\n\nChanges the user asked for after reading the spec:\n{clean(request)}"})
 
     def approve_spec(site_spec: str):
-        """HITL #1 approve: saves the spec as site_spec.json."""
+        """HITL #1 approve: saves the spec as site_spec.json, then the Design crew designs the site from it."""
         try:
             save_site_spec(site_spec)
         except ValueError as e:
-            return {status: f"**The spec is not valid JSON** ({e}). Fix it above or ask for changes."}
-        return {status: f"### Spec approved\nSaved to {SITE_SPEC.as_posix()}.", spec: gr.Code(interactive=False),
-                actions: gr.Column(visible=False)}
+            yield {status: f"**The spec is not valid JSON** ({e}). Fix it above or ask for changes."}
+            return
+        yield {status: f"### Spec approved\nSaved to {SITE_SPEC.as_posix()}.\n\n_The Design crew is designing "
+                       "your site. This takes a few minutes..._",
+               spec: gr.Code(interactive=False), actions: gr.Column(visible=False)}
+        try:
+            _, approved = run_design_phase(SITE_SPEC.read_text(encoding="utf-8"))
+        except Exception as e:
+            yield {status: f"**The design failed** ({e}). Approve again to retry.",
+                   spec: gr.Code(interactive=True), actions: gr.Column(visible=True)}
+            return
+        note = "The Design Critic approved it." if approved else "The Design Critic still had fixes after 3 rounds, so check it carefully."
+        yield {status: f"### Your design is ready\n{note} Saved to {DESIGN_DIR.as_posix()}/."}
 
     outputs = [state, intake, interview, question_tabs, status, review, spec, changes, *tabs, *radios, *others]
     start.click(begin, [description, audience, look_and_feel, qualities, api_base_url, endpoints], outputs)
