@@ -2,36 +2,46 @@
 The Alikable UI: places the screens of the ui/ package in one gr.Blocks and wires them
 together. Each screen draws itself (ui/*.py); this file decides which one shows.
 
-  Project picker --New project--> Intake (form, interview, spec gate, design)
-        │                                   │ design written
-        └--select a project--> Chat ------- ┘  (chat, jobs, approval notice, downloads)
+  Project picker --New project--> Intake --spec approved--> Design --design approved--> Build
+        └--select a project--> the screen for its stage (ui/navigation.screen_for)
 
-Which screen a project opens on comes from one rule, ui/navigation.screen_for. The open
-project's chat_id is kept in the browser, so reloading the page reopens it. While the
-chat shows, a timer refreshes the jobs panel and downloads every 2 seconds, and only
-redraws them when something changed.
+The build screen has the chat, the build gate and the deploy files on the left, and
+the jobs and a site preview on the right.
 
-Run from the project root: uv run ui (main.run loads .env first)
+The open project's chat_id is kept in the browser, so reloading the page reopens it.
+While the design or build screen shows, a timer polls the project every 2 seconds and
+redraws the live panels only when something changed; if the project moved to another
+screen (by an action in another tab), it opens that screen.
+
+main() serves the UI and the project folders for the previews (ui/preview.py) on one
+port. Run from the project root: uv run ui (main.run loads .env first)
 """
 
-import gradio as gr
+import os
 
-from alikable.flows import change_router, intake as intake_flow
+import gradio as gr
+import uvicorn
+
+from alikable.flows import project as projects_api
+from alikable.models import ProjectView
 from alikable.projects import PROJECTS, Project
-from alikable.ui.build import BuildPanel
+from alikable.ui import preview
+from alikable.ui.build import BuildGate, JobsPanel
 from alikable.ui.chat import CSS, ChatScreen
 from alikable.ui.deploy import DeployPanel
+from alikable.ui.design import DesignScreen
 from alikable.ui.intake import IntakeScreen
-from alikable.ui.navigation import Screen, Screens, screen_for
+from alikable.ui.navigation import CANT_OPEN, Screen, Screens, screen_for
 from alikable.ui.projects import ProjectsScreen
 
 REFRESH_SECONDS = 2
+LIVE_SCREENS = ("design", "build")   # screens whose panels change while jobs run
 
 
 def build_app() -> gr.Blocks:
     with gr.Blocks(title="Alikable") as demo:
         chat_id = gr.BrowserState("", storage_key="alikable_chat_id")
-        seen = gr.State("")   # what the panels last drew, so the timer skips unchanged updates
+        seen = gr.State("")   # what the live panels last drew, so the timer skips unchanged updates
         with gr.Row(equal_height=True):
             gr.Markdown("# Alikable\nHere are my endpoints, give me the UI: a plain HTML, CSS and JavaScript front end.")
             all_projects = gr.Button("← All projects", size="sm", variant="secondary", scale=0, min_width=0,
@@ -41,67 +51,88 @@ def build_app() -> gr.Blocks:
             projects = ProjectsScreen()
         with gr.Column(visible=False) as intake_column:
             intake = IntakeScreen(chat_id)
-        with gr.Column(visible=False) as chat_column:
+        with gr.Column(visible=False) as design_column:
+            design = DesignScreen(chat_id)
+        with gr.Column(visible=False) as build_column:
             with gr.Row():
                 with gr.Column(scale=3):
                     chat = ChatScreen(chat_id)
-                with gr.Column(scale=2):
-                    build = BuildPanel(chat_id)
+                    gate = BuildGate(chat_id)
                     deploy = DeployPanel()
+                with gr.Column(scale=2):
+                    with gr.Tabs():
+                        with gr.Tab("Jobs"):
+                            jobs = JobsPanel(chat_id)
+                        with gr.Tab("Site preview"):
+                            site = preview.PreviewFrame(chat_id, lambda p: p.site_dir, first="index.html", note=True)
         timer = gr.Timer(REFRESH_SECONDS, active=False)
-        screens = Screens(projects=projects_column, intake=intake_column, chat=chat_column)
-        everything = [chat_id, seen, timer, all_projects, *screens.outputs, *projects.outputs, *intake.outputs,
-                      *chat.outputs, *build.outputs, *deploy.outputs]
-        panel_outputs = [seen, *build.outputs, *deploy.outputs]
+        screens = Screens(projects=projects_column, intake=intake_column, design=design_column, build=build_column)
+        live_outputs = [seen, *design.outputs, *gate.outputs, *jobs.outputs, *deploy.outputs, *site.outputs]
+        everything = [chat_id, timer, all_projects, *screens.outputs, *projects.outputs, *intake.outputs,
+                      *chat.outputs, *live_outputs]
 
-        def panels(cid: str) -> dict:
-            """The jobs panel and downloads, and what they show."""
-            project, response = Project(cid), change_router.chat_status(cid)
-            return {**build.render(project, response), **deploy.render(project),
-                    seen: build.signature(response) + "|" + deploy.signature(project)}
+        def live(view: ProjectView) -> dict:
+            """The panels that change while jobs run, and what they show."""
+            project = Project(view.chat_id)
+            return {**design.render(view), **gate.render(view), **jobs.render(view), **deploy.render(project),
+                    **site.render(project), seen: signature(view)}
 
         def show(screen: Screen) -> dict:
             """One screen visible; the back button and the refresh timer only where they apply."""
             return {**screens.show(screen), all_projects: gr.Button(visible=screen != "projects"),
-                    timer: gr.Timer(active=screen == "chat")}
+                    timer: gr.Timer(active=screen in LIVE_SCREENS)}
 
         def open_project(cid: str) -> dict:
-            """Shows the screen the project is at; the picker if there is none."""
-            destination = screen_for(cid)
-            if destination.notice:
-                gr.Warning(destination.notice)
-            view = show(destination.screen)
-            if destination.screen == "projects":
-                return {**view, **projects.render(), chat_id: ""}
-            if destination.screen == "intake":
-                return {**view, **intake.render(intake_flow.current_state(cid), notify=False), chat_id: cid}
-            return {**view, **chat.render(Project(cid)), **panels(cid), chat_id: cid}
+            """Shows the screen for the project's stage; the picker if there is no project."""
+            view = projects_api.open_project(cid) if cid else None
+            if view is None:
+                if cid:
+                    gr.Warning(CANT_OPEN)
+                return {**show("projects"), **projects.render(), chat_id: "", seen: ""}
+            screen = screen_for(view)
+            if screen == "intake":
+                return {**show(screen), **intake.render(view.intake, notify=False), chat_id: cid, seen: ""}
+            return {**show(screen), **chat.render(view), **live(view), chat_id: cid}
 
-        def open_designed(cid: str) -> dict:
-            """After the spec gate: opens the chat once the design is written, otherwise stays put."""
-            return open_project(cid) if cid and Project(cid).design_json.exists() else unchanged(everything)
+        def follow(cid: str, current: Screen) -> dict:
+            """After an action: opens the project's screen if the action moved it to another one."""
+            view = projects_api.open_project(cid) if cid else None
+            return open_project(cid) if view and screen_for(view) != current else unchanged(everything)
 
         def new_project() -> dict:
-            return {**show("intake"), **intake.reset(), chat_id: ""}
+            return {**show("intake"), **intake.reset(), chat_id: "", seen: ""}
 
         def open_selected(evt: gr.SelectData) -> dict:
             return open_project(projects.selected_id(evt))
 
+        def redraw(cid: str) -> dict:
+            return live(projects_api.status(cid)) if cid else unchanged(live_outputs)
+
         def refresh(cid: str, last: str) -> dict:
-            """Timer tick: redraws the panels only when something changed."""
-            if not cid:
-                return unchanged(panel_outputs)
-            update = panels(cid)
-            return unchanged(panel_outputs) if update[seen] == last else update
+            """Timer tick: redraws the live panels only when something changed."""
+            view = projects_api.open_project(cid) if cid else None
+            if view is None or signature(view) == last:
+                return unchanged(everything)
+            if screen_for(view) != last.split("|")[0]:
+                return open_project(cid)
+            return {**unchanged(everything), **live(view)}
 
         demo.load(open_project, chat_id, everything)
         all_projects.click(lambda: open_project(""), None, everything)
         projects.new.click(new_project, None, everything)
         projects.table.select(open_selected, None, everything)
-        intake.approved.then(open_designed, chat_id, everything)
-        chat.sent.then(panels, chat_id, panel_outputs)
-        timer.tick(refresh, [chat_id, seen], panel_outputs, show_progress="hidden")
+        intake.approved.then(lambda cid: follow(cid, "intake"), chat_id, everything)
+        design.approved.then(lambda cid: follow(cid, "design"), chat_id, everything)
+        for acted in [chat.sent, *gate.acted, *jobs.acted]:
+            acted.then(redraw, chat_id, live_outputs)
+        timer.tick(refresh, [chat_id, seen], everything, show_progress="hidden")
     return demo
+
+
+def signature(view: ProjectView) -> str:
+    """Changes whenever the live panels would draw something different. Starts with the screen."""
+    jobs = ",".join(f"{j.id}:{j.status}:{j.step}" for j in view.jobs)
+    return f"{screen_for(view)}|{view.stage}|{view.awaiting}|{jobs}"
 
 
 def unchanged(components: list) -> dict:
@@ -110,8 +141,11 @@ def unchanged(components: list) -> dict:
 
 
 def main():
-    """Launch the UI. main.run loads .env before calling this."""
-    build_app().queue(default_concurrency_limit=None).launch(allowed_paths=[str(PROJECTS.resolve())], css=CSS)
+    """Serve the UI and the previews on one port. main.run loads .env before calling this."""
+    demo = build_app().queue(default_concurrency_limit=None)
+    app = gr.mount_gradio_app(preview.server(), demo, path="/", allowed_paths=[str(PROJECTS.resolve())], css=CSS)
+    uvicorn.run(app, host=os.getenv("GRADIO_SERVER_NAME", "127.0.0.1"),
+                port=int(os.getenv("GRADIO_SERVER_PORT", "7860")))
 
 
 if __name__ == "__main__":

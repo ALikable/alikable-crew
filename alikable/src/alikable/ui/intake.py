@@ -1,12 +1,11 @@
 """
-Intake screens: intake form -> input guardrail -> interview rounds -> spec gate (HITL #1)
--> Design crew.
+Intake screens: intake form -> input guardrail -> interview rounds -> spec gate (HITL #1).
 
 The intake flow (flows/intake.py) does the work up to HITL #1; this screen only draws
 it. The Discovery Interviewer asks its questions one tab each, as options to pick from,
 plus Other for a custom answer. Then the user approves the spec, edits it by hand, or
 describes changes for the Planning crew. Approving saves the project's site_spec.json
-and runs the Design crew on it; app.py then opens the project's chat.
+and starts the design job; app.py then opens the design screen.
 
 One browser session reuses these components for every project it opens, so render sets
 every property that differs between stages, never only the ones that changed.
@@ -17,11 +16,9 @@ from concurrent.futures import ThreadPoolExecutor
 
 import gradio as gr
 
-from alikable.flows import intake
+from alikable.flows import project as projects_api
 from alikable.flows.intake import MAX_QUESTIONS
-from alikable.flows.phases import run_design_phase
 from alikable.models import IntakeForm, IntakeState
-from alikable.projects import Project
 
 OTHER = "Other"
 QUALITIES = ["Intuitive", "Responsive", "Accessible", "Fast"]
@@ -29,7 +26,6 @@ STEP_STATUS = {   # the intake flow's steps that take long enough to show
     "discovery interviewer": "_The Discovery Interviewer is reading your answers..._",
     "planning crew": "_The Planning crew is writing the plan specification. This takes a few minutes..._",
 }
-DESIGNING = "_The Design crew is designing your site. This takes a few minutes..._"
 
 
 class IntakeScreen:
@@ -79,7 +75,7 @@ class IntakeScreen:
         start.click(self._begin, fields, outputs)
         submit.click(self._answer, [self.state, *self.radios, *self.others], outputs)
         revise.click(self._request_changes, [self.state, self.changes], outputs)
-        # finishes when an approval has, designed or not; app.py opens the chat after it
+        # finishes when the spec was approved, or the approval refused; app.py then opens the design screen
         self.approved = approve.click(self._approve, [self.state, self.spec], outputs)
         for radio, other in zip(self.radios, self.others):
             radio.change(lambda choice: gr.Textbox(visible=choice == OTHER), radio, other)
@@ -117,7 +113,7 @@ class IntakeScreen:
             self.changes: "",
             self.status: self._status(s),
         }
-        if s.chat_id and s.stage != "form":   # a refused form's chat_id is thrown away (flows/intake.py)
+        if s.chat_id and s.stage != "form":   # a refused form's chat_id is thrown away (flows/project.py)
             screen[self.chat_id] = s.chat_id
         return screen
 
@@ -130,7 +126,7 @@ class IntakeScreen:
                     else "The Spec Critic still had fixes after 2 rounds, so check it carefully.")
             return f"### Your plan specification is ready\n{note} Approve it to save it and design the site, or ask for changes."
         if s.stage == "approved":
-            return "### Spec approved\nIf the design did not finish, approve again to retry it."
+            return "### Spec approved"
         return ""
 
     def reset(self) -> dict:
@@ -142,7 +138,7 @@ class IntakeScreen:
     # ---------------------------------------------------------------- handlers
 
     def _run(self, action, *args):
-        """Runs one intake action in the background, showing each long step as it starts. Returns the new state."""
+        """Runs one intake action in the background, showing each long step as it starts. Returns its intake state."""
         steps: queue.Queue[str] = queue.Queue()
         with ThreadPoolExecutor(max_workers=1) as pool:
             future = pool.submit(action, *args, on_step=steps.put)
@@ -153,14 +149,14 @@ class IntakeScreen:
                     continue
                 if step in STEP_STATUS:
                     yield {self.status: STEP_STATUS[step]}
-        return future.result()
+        return future.result().intake
 
     def _begin(self, desc, aud, look, quals, url, eps):
         """Intake form -> intake flow: input guardrail, then the first interview round."""
         yield {self.status: "_Checking your answers..._", self.form: gr.Column(visible=False)}
         form = IntakeForm(description=desc, audience=aud, look_and_feel=look, qualities=quals, api_base_url=url.strip(),
                           endpoints=[e.strip() for e in eps.splitlines() if e.strip()])
-        s = yield from self._run(intake.start_intake, form)
+        s = yield from self._run(projects_api.new_project, form)
         yield self.render(s)
 
     def _answer(self, s: IntakeState, *values):
@@ -168,25 +164,15 @@ class IntakeScreen:
         picks, typed = values[:MAX_QUESTIONS], values[MAX_QUESTIONS:]
         replies = [(t if p == OTHER else p) or "" for p, t in zip(picks, typed)]
         yield {self.interview: gr.Column(visible=False)}
-        s = yield from self._run(intake.answer_interview, s.chat_id, replies)
+        s = yield from self._run(projects_api.answer_interview, s.chat_id, replies)
         yield self.render(s)
 
     def _request_changes(self, s: IntakeState, request: str):
         """HITL #1 edit: the Planning crew rewrites the spec with the user's changes."""
         yield {self.review: gr.Column(visible=False)}
-        s = yield from self._run(intake.revise_spec, s.chat_id, request)
+        s = yield from self._run(projects_api.revise_spec, s.chat_id, request)
         yield self.render(s)
 
-    def _approve(self, s: IntakeState, site_spec: str):
-        """HITL #1 approve: the flow saves the spec, then the Design crew designs the site from it."""
-        s = intake.approve_spec(s.chat_id, site_spec)
-        if s.problems:
-            yield self.render(s)
-            return
-        yield {**self.render(s), self.status: f"### Spec approved\n{DESIGNING}", self.actions: gr.Column(visible=False)}
-        project = Project(s.chat_id)
-        try:
-            run_design_phase(project, project.site_spec.read_text(encoding="utf-8"))
-        except Exception as e:
-            yield {self.status: f"**The design failed** ({e}). Approve again to retry.",
-                   self.actions: gr.Column(visible=True)}
+    def _approve(self, s: IntakeState, site_spec: str) -> dict:
+        """HITL #1 approve: the flow saves the spec and the design job starts."""
+        return self.render(projects_api.approve_spec(s.chat_id, site_spec).intake)

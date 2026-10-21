@@ -1,16 +1,17 @@
 """
 The project's chat with the Chat Agent (flows/change_router.py).
 
-Send calls run_chat, then redraws the chat from chat_messages, so the chat panel always
-shows what the Chat Agent has in its history, including a Change Router's clarifying
-question. Send is disabled while a message is answered; app.py refreshes the jobs panel
-after each message.
+Send calls run_chat, then redraws the chat from the view's messages, so the chat panel
+always shows what the Chat Agent has in its history, including a Change Router's
+clarifying question. Send is disabled while a message is answered; app.py refreshes the
+build panels after each message.
 """
 
 import gradio as gr
 
-from alikable.flows import change_router
-from alikable.projects import Project
+from alikable.flows import project as projects_api
+from alikable.models import ProjectView
+from alikable.ui import warn
 
 PLACEHOLDER = ("Ask about the project, ask for a change (\"make the header dark\"), ask for a check "
                "(\"is every page accessible?\"), or approve a build that is waiting.")
@@ -37,9 +38,8 @@ class ChatScreen:
     def outputs(self) -> list:
         return [self.title, self.chatbot, self.message, self.send]
 
-    def render(self, project: Project) -> dict:
-        return {self.title: f"## {project.title}",
-                self.chatbot: change_router.chat_messages(project.chat_id),
+    def render(self, view: ProjectView) -> dict:
+        return {self.title: f"## {view.title}", self.chatbot: view.messages,
                 self.message: "", self.send: gr.Button(interactive=True)}
 
     def _send(self, chat_id: str, message: str, shown: list):
@@ -49,10 +49,10 @@ class ChatScreen:
         yield {self.message: "", self.send: gr.Button(interactive=False),
                self.chatbot: [*shown, {"role": "user", "content": message}]}
         try:
-            change_router.run_chat(message, chat_id)
+            view = warn(projects_api.run_chat(message, chat_id))
         except Exception as e:
             gr.Warning(f"The Chat Agent failed ({e}). Send the message again.")
             yield {self.message: message, self.send: gr.Button(interactive=True),
-                   self.chatbot: change_router.chat_messages(chat_id)}
+                   self.chatbot: projects_api.status(chat_id).messages}
             return
-        yield {self.chatbot: change_router.chat_messages(chat_id), self.send: gr.Button(interactive=True)}
+        yield {self.chatbot: view.messages, self.send: gr.Button(interactive=True)}
