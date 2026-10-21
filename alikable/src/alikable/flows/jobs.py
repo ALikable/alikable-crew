@@ -22,9 +22,9 @@ class Jobs:
         self._lock = threading.Lock()      # guards _jobs and _unreported
 
     def start(self, kind: JobKind, title: str, work: Callable[[Job], str], runner: Executor,
-              **params: Any) -> Job:
+              params: dict[str, Any] | None = None) -> Job:
         """Queue work on the runner. params are what started it, so retry can start it again."""
-        job = Job(kind=kind, title=title, params=params)
+        job = Job(kind=kind, title=title, params=params or {})
         with self._lock:
             self._jobs.append(job)
         self.on_change()

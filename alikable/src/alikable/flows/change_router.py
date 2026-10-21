@@ -211,7 +211,7 @@ class ChatSession:
                     else "Design not approved after 3 rounds; kept the last version.") + " Waiting for approval."
 
         title = f"Design change: {request}" if request else "Design"
-        return self.jobs.start("design", title, work, self.build_runner, request=request)
+        return self.jobs.start("design", title, work, self.build_runner, {"request": request})
 
     def start_first_build(self, title: str = "First build") -> Job:
         """Build the approved design: implementation, then polish. No checkpoint: nothing was approved yet."""
@@ -231,7 +231,8 @@ class ChatSession:
             return " ".join(pipeline.state.notes) + " Waiting for approval or a change."
 
         return self.jobs.start("change", title or f"Change from the {route} crew: {request}", work,
-                               self.build_runner, route=route, request=request, title=title, checkpoint=checkpoint)
+                               self.build_runner,
+                               {"route": route, "request": request, "title": title, "checkpoint": checkpoint})
 
     def start_deploy(self, host: str, detail: str) -> Job:
         def work(job: Job) -> str:
@@ -241,7 +242,7 @@ class ChatSession:
             return result.summary()
 
         return self.jobs.start("deploy", f"Deploy guide for {HOST_NAMES[host]}", work, self.build_runner,
-                               host=host, detail=detail)
+                               {"host": host, "detail": detail})
 
     def start_rollback(self) -> Job:
         def work(job: Job) -> str:
@@ -257,7 +258,7 @@ class ChatSession:
     def start_check(self, agent: str, question: str) -> Job:
         role = Alikable(self.project).agents_config[agent]["role"].strip()  # type: ignore[index]
         return self.jobs.start("check", f"{role} check", lambda job: _run_check(agent, question, self.project),
-                               _check_runner, agent=agent, question=question)
+                               _check_runner, {"agent": agent, "question": question})
 
     def retry(self, job_id: str) -> Job | None:
         """Start a failed or interrupted job again. None if there is no such job to retry."""
