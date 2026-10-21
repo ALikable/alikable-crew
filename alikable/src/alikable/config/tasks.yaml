@@ -125,7 +125,8 @@ design_review_task:
 api_integration_task:
   description: >
     Write the data layer of the site as three plain JavaScript files (not modules:
-    no import or export).
+    no import or export). Always write all three, even when the spec has no API
+    or no endpoints: then js/api.js works only with the mock data.
     js/config.js defines one global value, API_BASE_URL, from the spec (empty if
     there is none).
     js/mock-data.js holds all sample data as plain global values (for example
@@ -134,8 +135,8 @@ api_integration_task:
     loading and error handling, and holds no sample data itself. If the spec says
     to use mock data, or has no API, return data with exactly the same shape as
     the real responses, so switching to the real API only changes js/config.js.
-    In mock mode, keep the tasks in localStorage, starting from js/mock-data.js the
-    first time, so added and deleted items survive a page refresh.
+    In mock mode, keep the data in localStorage, starting from js/mock-data.js the
+    first time, so changes survive a page refresh.
     Never put API keys or secrets in the code.
     For a mock login token use exactly the value 'demo-token', never a long string.
     In mock mode, check tokens by comparing with the fixed text 'demo-token', never
@@ -147,9 +148,13 @@ api_integration_task:
     Feedback from the Code Reviewer on the previous round (fix exactly these
     points; "None" means this is the first round):
     {feedback}
+
+    The site's files from the previous round ("None" in the first round). If there
+    are any, start from your js/config.js, js/mock-data.js and js/api.js and keep
+    every function name the pages already call:
+    {previous_build}
   expected_output: >
     js/config.js, js/mock-data.js and js/api.js as files with their complete
-    contents, and a short note listing the function names in js/api.js.
   agent: api_integrator
 
 page_build_task:
@@ -167,7 +172,8 @@ page_build_task:
     <script src="js/mock-data.js"></script>
     <script src="js/api.js"></script>
     <script src="js/<page>.js"></script>
-    Page scripts call the global functions from js/api.js directly (no import).
+    Page scripts call the global functions from js/api.js directly (no import),
+    using exactly the function names the API Integrator wrote in its js/api.js.
     To hide an element use the hidden attribute, never a style attribute.
     The design layouts show sample messages (errors, success, loading, empty
     states) so you can see how they look. On the real pages these start hidden
@@ -186,7 +192,7 @@ page_build_task:
       design's confirm dialog if it has one.
     - After a change (add or delete), refresh the data so the page shows it.
     - Pages that need login send the user to the login page when there is no
-      token or the API returns 401.
+      token (and on a 401 only if the spec has a real API).
 
     Site spec: {site_spec}
 
@@ -195,6 +201,11 @@ page_build_task:
     Feedback from the Code Reviewer on the previous round (fix exactly these
     points; "None" means this is the first round):
     {feedback}
+
+    Your files from the previous round ("None" in the first round). If there are
+    any, start from them and change only what the feedback asks, keeping
+    everything that already works:
+    {previous_build}
   expected_output: >
     Every HTML page (one file per page in the spec) and every page script as files
     with their complete contents, and a short note on how the pages use js/api.js.
@@ -217,8 +228,11 @@ code_review_task:
        script: forms use event.preventDefault() and have no action attribute,
        loading, empty, error and success elements are shown at the right time,
        delete asks for confirmation, the data refreshes after a change, and pages
-       that need login redirect when there is no token or on a 401.
+       that need login redirect when there is no token (and on a 401 only if the
+       spec has a real API).
     Only these 5 checks decide approval. Do not judge anything else.
+    If index.html is not a page in the spec, it is a small redirect page added by
+    the system: skip checks 3 to 5 for it.
     styles.css is the approved design and cannot be changed: every fix must be
     in the pages or their scripts, using classes that already exist in styles.css.
 
@@ -230,7 +244,8 @@ code_review_task:
     Then the 5 checks, each PASS or FAIL with a one-line reason.
     Then at most 5 fixes, one line each, naming the file and the exact change.
     Never include file contents.
-  agent: code_reviewer  
+  agent: code_reviewer
+
 # ---------------------------------------------------------- Polish & Iterate crew
 
 qa_task:

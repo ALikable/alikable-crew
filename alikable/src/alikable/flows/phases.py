@@ -141,28 +141,52 @@ def reset_site() -> None:
     with open(SITE_DIR / "styles.css", "a", encoding="utf-8") as css:
         css.write("\n[hidden] { display: none !important; }\n")
 
+def ensure_home_page(site_spec: str) -> None:
+    """If there is no index.html, add one that sends visitors to the first page."""
+    if (SITE_DIR / "index.html").exists():
+        return
+    pages = json.loads(site_spec).get("pages", [])
+    names = list(pages)                       # dict → its keys ("login", ...); list → its items
+    first_page = names[0] if names else None
+    if isinstance(first_page, dict):          # your example format: {"file": "index.html", ...}
+        first_page = first_page.get("file") or first_page.get("name")
+    if first_page and not str(first_page).endswith(".html"):
+        first_page = f"{first_page}.html"     # "login" → "login.html"
+    if not first_page or not (SITE_DIR / first_page).exists():
+        built = sorted(p.name for p in SITE_DIR.glob("*.html"))   # fall back to a page that was built
+        first_page = built[0] if built else None
+    if first_page:
+        (SITE_DIR / "index.html").write_text(
+            f'<meta http-equiv="refresh" content="0; url={first_page}">'
+            f'<a href="{first_page}">Continue</a>',
+            encoding="utf-8",
+        )
+
 def run_implementation_phase(site_spec: str, design: str, max_rounds: int = 3) -> bool:
     """Builds the site into output/site/ and loops on the Code Reviewer. Returns approved."""
-    feedback = "None"   # first round: no feedback yet
+    feedback = "None"          # round 1: no feedback yet
+    previous_build = "None"    # round 1: nothing built yet
     log = "# Code review log\n"
 
     for round_no in range(1, max_rounds + 1):
         print(f"\n===== IMPLEMENTATION ROUND {round_no} of {max_rounds} =====\n")
 
-        # 1. The builders write the code (as structured output, not files yet)
+        # 1. The builders write the code, starting from last round's files if there are any
         build = Alikable().implementation_crew().kickoff(
-            inputs={"site_spec": site_spec, "design": design, "feedback": feedback}
+            inputs={"site_spec": site_spec, "design": design, "feedback": feedback,
+                    "previous_build": previous_build}
         )
 
         # 2. Python empties output/site/ and saves the new files
         files = collect_files(build)
         reset_site()
         apply_changes(files)
+        ensure_home_page(site_spec)
         print(f"Saved {len(files)} files to {SITE_DIR}/")
 
         # 3. The reviewer checks the real files on disk
         review = Alikable().code_review_crew().kickoff(
-            inputs={"site_spec": site_spec, "design": design, "site_files": read_site()}
+            inputs={"site_spec": site_spec, "site_files": read_site()}
         ).raw
 
         print(f"\n----- CODE REVIEWER, ROUND {round_no} -----\n{review}\n")
@@ -173,12 +197,13 @@ def run_implementation_phase(site_spec: str, design: str, max_rounds: int = 3) -
             CODE_REVIEW_LOG.write_text(log, encoding="utf-8")
             return True
 
-        feedback = review   # reviewer's fixes go into the next round
+        feedback = review                 # reviewer's fixes go into the next round
+        previous_build = read_site()      # and the builders start from this round's files
 
     print(f"Not approved after {max_rounds} rounds; keeping the last build.")
     CODE_REVIEW_LOG.write_text(log, encoding="utf-8")
     return False
-
+    
 if __name__ == "__main__":
     # Test runs with the sample spec until the Planning crew provides the real one.
     #   uv run python -m alikable.flows.phases                 -> design phase
@@ -187,7 +212,7 @@ if __name__ == "__main__":
     from dotenv import load_dotenv
 
     load_dotenv()
-    spec = Path("examples/site_spec_task_manager.json").read_text(encoding="utf-8")
+    spec = SITE_SPEC.read_text(encoding="utf-8")   # the spec approved in John's UI
 
     if len(sys.argv) > 1 and sys.argv[1] == "implementation":
         design = Path("output/design/design.json").read_text(encoding="utf-8")
