@@ -11,6 +11,22 @@ What is built, and the next three steps to finish Alikable as one application:
 The UI runs in this project and calls the flows as ordinary Python functions in the
 same process. It is not a web API.
 
+## Status (2026-10-21)
+
+| Step | State |
+|---|---|
+| A. One folder per project | **Done.** Its "Done when" grep passes |
+| B1. One session per project | **Done** (`flows/project.py`, `flows/jobs.py`). Checked end to end with crews faked; not yet with real crews |
+| B2. The `ui/` package | **Done**: picker, intake + spec gate, design progress + design gate, build screen (chat, build gate, jobs, Retry, site preview), deploy files. Checked in-process with crews faked and over HTTP; **not yet checked in a browser** |
+| C. `main.py` runs the application | **Done.** `uv run ui`, `uv run alikable` and `crewai run` start the UI (`demo.launch()`) |
+
+What the app can do today, end to end: picker → intake form → interview → spec gate →
+design job → design gate (previews, `styles.css` editor, changes) → first build job
+(implementation → polish) → build gate (Approve with host and detail, or Reject) →
+deploy job → `DEPLOY.md` and downloads. From the first build on, the chat can ask for
+changes and checks and can approve or undo. Every project reopens where it was after
+a restart, from its `session.json`.
+
 ## Terms
 
 - **Project**: one website the user builds: one intake form, one spec, one design, one
@@ -27,30 +43,33 @@ same process. It is not a web API.
 |---|---|
 | Where project files live | `output/projects/<chat_id>/`. Memory stays shared in `output/memory/`, one scope per chat (as today) |
 | Files already in `output/` | Ignored. New code reads only `output/projects/`. Delete them by hand when no longer needed |
-| Reopening a project after a restart | Yes: `session.json` in each project folder, and a project picker as the first screen |
+| Reopening a project after a restart | Yes: `session.json` in each project folder (Step B1), and a project picker as the first screen. A folder from before `session.json` opens at the gate its files reached if its spec was approved; otherwise it can't continue |
 | Users | One local user. The picker lists every project folder; no logins |
 | `main.py` | Launches the UI only. The terminal stand-ins (`intake.run_in_terminal`, `change_router.main`) are removed |
 | UI code | `app.py` is a thin entry point over a `ui/` package, one module per screen |
 
 ## What exists today
 
+Every path below is under the project folder, `output/projects/<chat_id>/`
+(`projects.py`).
+
 | Piece | State |
 |---|---|
-| Intake flow (`flows/intake.py`, `guardrails.py`) | Built. `IntakeFlow`, one kickoff per user action (`start_intake`, `answer_interview`, `revise_spec`, `approve_spec`), each returning an `IntakeState` whose `stage` (form, interview, review, approved) says what to show: intake form → input guardrail → Discovery Interviewer rounds (multiple choice, max 3) → Planning crew → HITL #1, which saves `output/site_spec.json`. Flows are kept in memory in `intake._flows` |
-| Planning crew + review loop (`flows/intake.py`) | Built (`run_interview`, `run_planning_phase`, max 2 rounds, using `run_review_loop` from `flows/phases.py`). Not yet called by the change pipeline: `TODO(planning crew)` in `ChangePipelineFlow.run_planning` |
-| Design crew + review loop (`flows/phases.py`) | Built. `run_design_phase(site_spec)`, max 3 rounds; writes `output/design/` |
-| Implementation phase (`flows/phases.py`) | Built. `run_implementation_phase(site_spec, design)`: API Integrator → Page Builder return `FileChange`s, Python resets and writes `output/site/`, the Code Reviewer (with the Build Checker) checks the files on disk, max 3 rounds. Not yet called by the change pipeline: `TODO(implementation crew)`. Page Builders are not parallel |
-| Polish & Iterate loop (`flows/polish.py`) | Built. QA Tester ‖ Consistency Auditor → Fixer one item at a time, `POLISH_ROUNDS` (default 1) rounds of fixes then a report-only check; writes `output/polish_report.json` |
-| Build Checker tool (`tools/build_checker.py`) | Built. Static: HTML, local links, CDN allowlist, CSS braces, `node --check`, JSON, secrets. Always checks `output/site/` |
-| Rollback (`site_files.py`) | Built. A fix that adds build errors is undone at once; a change job checkpoints the last approved build in `output/.checkpoint/` and **reject** restores it |
-| Deploy Guide crew (`flows/create_deploy_guide.py`) | Built. `run_deploy_guide_phase(host, detail)`: Release Builder (`tools/release_builder.py`) zips `output/site/` to `output/site.zip` and smoke-tests it; the writer makes `output/DEPLOY.md` (also inside the zip) for netlify, vercel, github_pages or s3 at quick/standard/detailed depth; Python checks it, max 2 rounds. Started by approve in the chat |
-| Chat + Change Router (`flows/change_router.py`) | Built. `run_chat()`, `chat_status()`, background jobs, `awaiting_approval` (HITL #3). Sessions are kept in memory in `_sessions`. One global `_build_runner` runs change, deploy and rollback jobs one at a time |
+| Intake flow (`flows/intake.py`, `guardrails.py`) | Built. `IntakeFlow`, one kickoff per user action (form, answers, changes, approve), after which the `IntakeState`'s `stage` (form, interview, review, approved) says what to show: intake form → input guardrail → Discovery Interviewer rounds (multiple choice, max 3) → Planning crew → HITL #1, which saves `site_spec.json`. The project's `ProjectSession` holds the flow |
+| Planning crew + review loop (`flows/intake.py`) | Built (`run_interview`, `run_planning_phase`, max 2 rounds, using `run_review_loop` from `flows/phases.py`). A change routed to planning reruns it on the current spec plus the change |
+| Design crew + review loop (`flows/phases.py`) | Built. `run_design_phase(project, site_spec)`, max 3 rounds; writes `design/`. `save_styles` keeps a hand edit at HITL #2 in `styles.css` and `design.json` |
+| Implementation phase (`flows/phases.py`) | Built. `run_implementation_phase(project, site_spec, design, change_request="")`: API Integrator → Page Builder return `FileChange`s, Python resets and writes `site/`, the Code Reviewer (with the Build Checker) checks the files on disk, max 3 rounds. With a change request the builders start from the current site. Runs in the first build and in change jobs. Page Builders are not parallel |
+| Polish & Iterate loop (`flows/polish.py`) | Built. QA Tester ‖ Consistency Auditor → Fixer one item at a time, `POLISH_ROUNDS` (default 1) rounds of fixes then a report-only check; writes `polish_report.json` |
+| Build Checker tool (`tools/build_checker.py`) | Built. Static: HTML, local links, CDN allowlist, CSS braces, `node --check`, JSON, secrets. Checks the `site_dir` it was built with (the project's `site/`) |
+| Rollback (`site_files.py`) | Built. A fix that adds build errors is undone at once; a change job checkpoints the last approved build in `.checkpoint/` and **reject** restores it |
+| Deploy Guide crew (`flows/create_deploy_guide.py`) | Built. `run_deploy_guide_phase(project, host, detail)`: Release Builder (`tools/release_builder.py`) zips `site/` to `site.zip` and smoke-tests it; the writer makes `DEPLOY.md` (also inside the zip) for netlify, vercel, github_pages or s3 at quick/standard/detailed depth; Python checks it, max 2 rounds. Started by approve in the chat |
+| Chat + Change Router (`flows/change_router.py`) | Built. `ChatSession`: the gate waiting (`awaiting`), every job starter (design, change and first build, deploy, rollback, check), `approve`, `reject`, `retry`, and the chat. Each has its own `build_runner`, so one project's design, change, deploy and rollback jobs run one at a time and different projects run at once |
+| Jobs (`flows/jobs.py`) | Built. `Jobs`: a project's jobs, their status, results for the Chat Agent, and `params` so Retry can start one again. Calls `on_change` after every change |
+| Project session (`flows/project.py`) | Built. `ProjectSession` joins the intake flow and the `ChatSession`, derives the stage, saves and loads `session.json`. The module's functions are the UI API; each returns a `ProjectView` |
 | Chat memory (`crew.py`) | Built. One shared `Memory` in `output/memory/`, one scope per chat. Only `chat_crew` saves; the router and check jobs recall read-only. The intake form and interview answers are saved there before planning. Not undone by reject |
-| Gradio UI (`app.py`) | Intake screens up to HITL #1, then runs the Design crew and shows "design ready". No design gate, build, chat, jobs or deploy screens |
-| `main.py` | `run()` runs intake → HITL #1 → design → chat in the terminal. `train`/`test`/`replay` use the Planning crew alone |
-
-Every path above is fixed under `output/`, so today all chats share one site, one spec
-and one checkpoint. Step A changes that.
+| Projects (`projects.py`) | Built. `Project(chat_id)` owns every path. `project.json` holds the title and creation time; `progress` is the stage from `session.json` (from the files for older folders). `list_projects()` feeds the picker |
+| Gradio UI (`app.py`, `ui/`) | Built: every screen of Step B2 |
+| `main.py` | `run()` loads `.env` and launches the UI. `train`/`test`/`replay`/`run_with_trigger` use the Planning crew alone, in the `planning-crew-dev` project folder |
 
 ## The whole application, end to end
 
@@ -78,7 +97,14 @@ The project's **stage** decides which screen shows when it is opened:
 → deploying → deployed`. After the first build the chat is always available, and a
 change from the chat moves the stage back to `building`.
 
-## Step A. One folder per project
+## Step A. One folder per project (done)
+
+Built as planned, with these differences:
+
+- `Alikable(project)` takes the project in its constructor (`@CrewBase` allows it), so
+  no `bind_project` was needed. The tools get `site_dir` and `zip_path` from it.
+- The picker reads `project.json` and the files, not `session.json`, which doesn't
+  exist until Step B1.
 
 ### Layout
 
@@ -86,7 +112,8 @@ change from the chat moves the stage back to `building`.
 output/
   memory/                      shared Memory, one scope per chat (unchanged)
   projects/<chat_id>/
-    session.json               Step B: stage, intake state, chat history, jobs, title, times
+    project.json               title and creation time, for the picker
+    session.json               Step B1: stage, intake state, chat history, jobs, times
     site_spec_draft.json       Spec Writer / Copywriter output_file
     site_spec.json             approved at HITL #1
     spec_review_log.md
@@ -167,7 +194,29 @@ a `project: Project` (or `chat_id`) argument instead:
 
 ## Step B. All UI screens
 
-### B1. One session per project (backend, before the screens)
+### B1. One session per project (done)
+
+Built as planned, with these differences:
+
+- The stage isn't stored and updated by hand. `ProjectSession.stage()` derives it each
+  time from the intake's stage, the gate waiting and the newest non-check job, so it
+  can't drift from the jobs. `session.json` still records it, for the picker.
+- The job list moved out of `ChatSession` into `Jobs` (`flows/jobs.py`). `ChatSession`
+  starts every job, design and first build included, so Retry is one dispatch on the
+  job's kind and `params`.
+- The first build is a change job with `route="implementation"`, titled "First build",
+  without a checkpoint. A change routed to implementation passes its request to
+  `run_implementation_phase`, so the builders edit the current site.
+- After a rollback, a build that was never approved (no `DEPLOY.md`) waits at the build
+  gate again.
+- `session.json` doesn't keep what the user typed before the input guardrail (`form`,
+  `replies`, `request`), so a secret it removed never reaches disk.
+- A folder from before `session.json` with an approved spec opens at the gate its
+  files reached, or with an interrupted design job.
+- `ChatResponse` is gone; `ProjectView` replaced it. The prompt variable
+  `{awaiting_approval}` in `tasks.yaml` is kept, filled from `awaiting == "build"`.
+
+The plan as written:
 
 Today the intake keeps its flows in `intake._flows` and the chat keeps its sessions in
 `change_router._sessions`. Join them into one `ProjectSession` per `chat_id`, in a new
@@ -226,7 +275,33 @@ Persistence (`session.json`):
   state in a separate SQLite file. `session.json` keeps everything about a project in
   its folder.
 
-### B2. The `ui/` package
+### B2. The `ui/` package (done)
+
+Every action goes through `flows/project.py` and gets a `ProjectView` back.
+
+| Module | What it does |
+|---|---|
+| `ui/__init__.py` | `warn(view)`: shows why an action was refused |
+| `ui/navigation.py` | `screen_for(view)`: one table from stage to screen (projects, intake, design, build). `Screens` shows exactly one screen |
+| `ui/projects.py` | Picker: Project, Progress (the stage), Updated, Id; New project. Selecting a row opens the project |
+| `ui/intake.py` | `IntakeScreen`: form, interview tabs and spec gate. `render(state)` sets every property, because one browser session reuses the components for every project. Approve starts the design job; `app.py` then opens the design screen |
+| `ui/design.py` | `DesignScreen`: design progress, or the failure with Retry; at the gate the previews, the `styles.css` editor, Approve and Request changes. Approve starts the first build; `app.py` then opens the build screen |
+| `ui/chat.py` | Chatbot (messages format), message box, Send (disabled while a reply runs); redrawn from the view's messages after each message |
+| `ui/build.py` | `BuildGate`: what the build is doing; at the gate the polish summary, host and detail, Approve and Reject. `JobsPanel`: jobs newest first with a status icon each (queued, running, done, failed, interrupted), details on select, Retry for a failed or interrupted job |
+| `ui/deploy.py` | `DEPLOY.md` in an accordion, download buttons for `site.zip` and `DEPLOY.md`, each once its file exists |
+| `ui/preview.py` | `OpenInBrowser`: page dropdown and "Open in browser" for `design/` or `site/`; the app opens the page's `file://` URL with `webbrowser.open`. CORS note on the site's pages |
+| `app.py` | Places the screens; the build screen has chat, gate and deploy files on the left, Jobs and Site preview (open in browser) tabs on the right. `gr.BrowserState` chat_id, `demo.load` reopens it. `gr.Timer(2)` on the design and build screens redraws the live panels only when the signature (screen, stage, gate, jobs) changed, and opens another screen if the project moved. `main()`: `queue(default_concurrency_limit=None).launch(allowed_paths=[PROJECTS], css=...)` |
+
+Known gaps:
+
+- Not yet checked in a real browser: layout, Open in browser, the "← All projects" button
+  and the chat padding.
+- A timer redraw resets the page dropdown to its first page.
+- Open in browser opens on the computer running the app, so it needs the app to run
+  locally (not on Hugging Face Spaces; see Later).
+- Not yet run with real crews from the picker to the downloads.
+
+The original design:
 
 ```
 src/alikable/app.py          builds gr.Blocks from the modules below, launch settings, main()
@@ -267,7 +342,7 @@ Chat and jobs panel details:
 - `gr.Timer(2)` calls `status(chat_id)` and refreshes the jobs panel, banner and stage.
   It does nothing until a project is open.
 - Finished jobs are not posted into the chat. The Chat Agent already reports them in
-  its next reply (`jobs_for_chat()`).
+  its next reply (`Jobs.for_chat()`).
 
 Layout of the build screen:
 
@@ -286,21 +361,20 @@ Layout of the build screen:
 +--------------------------------------------+-------------------------------+
 ```
 
-### Previews need the project folders served
+### Previews open in the browser
 
-A `gr.HTML` iframe needs a URL, and a page's relative links (`styles.css`, `js/app.js`)
-must resolve next to it. Gradio's `allowed_paths` serves single files under
-`/gradio_api/file=...`. Whether relative links resolve there is uncertain, so the
-plan doesn't rely on it:
+Decision (changed from in-app iframes): a page picker and an "Open in browser" button.
+The app opens the page's `file://` URL with `webbrowser.open`, because a web page can't
+link to `file://`. From `file://` relative links (`styles.css`, `js/app.js`) resolve,
+and the builders write plain scripts, not modules, so the pages run.
 
-- `ui/preview.py` makes a FastAPI app, mounts
-  `StaticFiles(directory="output/projects")` at `/preview`, and mounts the Gradio app
-  on it with `gr.mount_gradio_app`. `app.main()` runs it with uvicorn.
-- Iframe sources are then `/preview/<chat_id>/site/index.html` and
-  `/preview/<chat_id>/design/components.html`.
-- Add a cache-busting query (`?v=<updated_at>`) so a new build reloads.
-- **Limit:** pages that call the user's real API from the preview may be blocked by CORS
-  unless that API allows the app's origin. Mock data always works. Say so in the preview.
+- No preview server: the iframes needed the project folders served over HTTP, which
+  `launch()` can't add, so the app ran its own FastAPI app with uvicorn. Without
+  iframes, `main()` is a plain `demo.launch()` again.
+- **Limit:** it opens on the computer running the app, which is the user's own (one
+  local user). Hosting the app elsewhere needs the served previews back.
+- **Limit:** pages that call the user's real API from `file://` (origin `null`) may be
+  blocked by CORS. Mock data always works. Say so next to the button.
 
 ### Done when
 
@@ -308,7 +382,7 @@ plan doesn't rely on it:
   old project opens on the right screen after an app restart.
 - A design hand edit shows up in the first build.
 
-## Step C. `main.py` runs the application
+## Step C. `main.py` runs the application (done)
 
 - `main.run()` loads `.env` and launches the UI (`alikable.app.main`), so `crewai run`,
   `uv run alikable` and `uv run ui` all start the same app. Point the `alikable`,
@@ -322,13 +396,13 @@ plan doesn't rely on it:
 
 ## Order and dependencies
 
-1. **Step A**, folders, paths, tool binding and per-project runners. Everything else
+1. **Step A** (done), folders, paths, tool binding and per-project runners. Everything else
    writes files, so this goes first. Test it with the per-phase `__main__` runners.
-2. **Step B1**, `ProjectSession`, gates, the two TODOs, direct approve/reject, and
+2. **Step B1** (done), `ProjectSession`, gates, the two TODOs, direct approve/reject, and
    `session.json`. Test it with crews faked.
-3. **Step B2**, the `ui/` package. Move the intake screens first with no behavior
+3. **Step B2** (done), the `ui/` package. Move the intake screens first with no behavior
    change, then add the design gate, build, chat, deploy, picker and previews.
-4. **Step C**, `main.py` and `pyproject.toml`, then remove the stand-ins.
+4. **Step C** (done), `main.py` and `pyproject.toml`, then remove the stand-ins.
 
 ## Later (not in these steps)
 
@@ -357,5 +431,9 @@ plan doesn't rely on it:
     time per project, approve only when awaiting, clarify replies
   - `test_projects.py`: two projects never share files; reject restores only its own
     project; `session.json` round trip; running jobs load as interrupted
-- UI: drive each screen with `gradio_client` and fake crews (as was done for the
-  intake screens), then one real run from the picker to the downloads.
+- UI: drive each screen with fake crews, then one real run from the picker to the
+  downloads. Done for B1 and B2 with scratch scripts (crews faked) that call the
+  `flows/project.py` API and run each UI handler through Gradio's `postprocess_data`;
+  `gradio_client` can't see which screens are visible. Open in browser was checked
+  with `webbrowser.open` stubbed: it gets the page's `file://` URL. Not in
+  `tests/` yet. Not yet checked in a real browser or with real crews.

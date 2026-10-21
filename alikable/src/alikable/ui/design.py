@@ -1,7 +1,7 @@
 """
 Design screen: the design job's progress, then the design gate (HITL #2).
 
-At the gate the user previews components.html and each page layout, may edit
+At the gate the user opens components.html and each page layout in the browser, may edit
 styles.css by hand, and approves (the first build starts; app.py then opens the build
 screen) or describes changes for the Design crew. A failed or interrupted design job
 can be retried.
@@ -16,7 +16,7 @@ from alikable.flows import project as projects_api
 from alikable.models import Job, ProjectView
 from alikable.projects import Project
 from alikable.ui import warn
-from alikable.ui.preview import PreviewFrame
+from alikable.ui.preview import OpenInBrowser
 
 
 class DesignScreen:
@@ -26,12 +26,9 @@ class DesignScreen:
         self.status = gr.Markdown()
         self.retry = gr.Button("Retry the design", visible=False)
         with gr.Column(visible=False) as self.review:
-            with gr.Row():
-                with gr.Column(scale=3):
-                    self.preview = PreviewFrame(chat_id, lambda p: p.design_dir, first="components.html")
-                with gr.Column(scale=2):
-                    self.styles = gr.Code(language="css", label="styles.css (you can edit it before approving)",
-                                          interactive=True, max_lines=28)
+            self.preview = OpenInBrowser(chat_id, lambda p: p.design_dir, first="components.html")
+            self.styles = gr.Code(language="css", label="styles.css (you can edit it before approving)",
+                                  interactive=True, max_lines=28)
             self.changes = gr.Textbox(label="Or describe what to change", lines=2,
                                       info="The Design crew designs again with these changes; "
                                            "hand edits to styles.css are not kept.")

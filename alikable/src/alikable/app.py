@@ -6,21 +6,17 @@ together. Each screen draws itself (ui/*.py); this file decides which one shows.
         └--select a project--> the screen for its stage (ui/navigation.screen_for)
 
 The build screen has the chat, the build gate and the deploy files on the left, and
-the jobs and a site preview on the right.
+the jobs and the site's pages, to open in the browser, on the right.
 
 The open project's chat_id is kept in the browser, so reloading the page reopens it.
 While the design or build screen shows, a timer polls the project every 2 seconds and
 redraws the live panels only when something changed; if the project moved to another
 screen (by an action in another tab), it opens that screen.
 
-main() serves the UI and the project folders for the previews (ui/preview.py) on one
-port. Run from the project root: uv run ui (main.run loads .env first)
+Run from the project root: uv run ui (main.run loads .env first)
 """
 
-import os
-
 import gradio as gr
-import uvicorn
 
 from alikable.flows import project as projects_api
 from alikable.models import ProjectView
@@ -42,9 +38,9 @@ def build_app() -> gr.Blocks:
     with gr.Blocks(title="Alikable") as demo:
         chat_id = gr.BrowserState("", storage_key="alikable_chat_id")
         seen = gr.State("")   # what the live panels last drew, so the timer skips unchanged updates
-        with gr.Row(equal_height=True):
+        with gr.Row():
             gr.Markdown("# Alikable\nHere are my endpoints, give me the UI: a plain HTML, CSS and JavaScript front end.")
-            all_projects = gr.Button("← All projects", size="sm", variant="secondary", scale=0, min_width=0,
+            all_projects = gr.Button("← All projects", size="sm", variant="secondary", scale=0, min_width=160,
                                      visible=False)
 
         with gr.Column() as projects_column:
@@ -64,7 +60,7 @@ def build_app() -> gr.Blocks:
                         with gr.Tab("Jobs"):
                             jobs = JobsPanel(chat_id)
                         with gr.Tab("Site preview"):
-                            site = preview.PreviewFrame(chat_id, lambda p: p.site_dir, first="index.html", note=True)
+                            site = preview.OpenInBrowser(chat_id, lambda p: p.site_dir, first="index.html", note=True)
         timer = gr.Timer(REFRESH_SECONDS, active=False)
         screens = Screens(projects=projects_column, intake=intake_column, design=design_column, build=build_column)
         live_outputs = [seen, *design.outputs, *gate.outputs, *jobs.outputs, *deploy.outputs, *site.outputs]
@@ -141,11 +137,8 @@ def unchanged(components: list) -> dict:
 
 
 def main():
-    """Serve the UI and the previews on one port. main.run loads .env before calling this."""
-    demo = build_app().queue(default_concurrency_limit=None)
-    app = gr.mount_gradio_app(preview.server(), demo, path="/", allowed_paths=[str(PROJECTS.resolve())], css=CSS)
-    uvicorn.run(app, host=os.getenv("GRADIO_SERVER_NAME", "127.0.0.1"),
-                port=int(os.getenv("GRADIO_SERVER_PORT", "7860")))
+    """Launch the UI. main.run loads .env before calling this."""
+    build_app().queue(default_concurrency_limit=None).launch(allowed_paths=[str(PROJECTS.resolve())], css=CSS)
 
 
 if __name__ == "__main__":
