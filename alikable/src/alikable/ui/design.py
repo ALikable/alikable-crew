@@ -15,6 +15,7 @@ import gradio as gr
 from alikable.flows import project as projects_api
 from alikable.models import Job, ProjectView
 from alikable.projects import Project
+from alikable.ui import warn
 from alikable.ui.preview import PreviewFrame
 
 
@@ -86,10 +87,3 @@ class DesignScreen:
 
 def latest_design(view: ProjectView) -> Job | None:
     return next((j for j in reversed(view.jobs) if j.kind == "design"), None)
-
-
-def warn(view: ProjectView) -> ProjectView:
-    """Shows why the action was refused, if it was."""
-    for problem in view.problems:
-        gr.Warning(problem)
-    return view
