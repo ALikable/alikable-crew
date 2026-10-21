@@ -2,11 +2,16 @@
 import sys
 import warnings
 
+from dotenv import load_dotenv
+
 from alikable.crew import Alikable
+from alikable.flows import change_router
+from alikable.flows.intake import run_in_terminal
+from alikable.flows.phases import DESIGN_DIR, run_design_phase
 
 warnings.filterwarnings("ignore", category=SyntaxWarning, module="pysbd")
 
-# Sample interview summary for the Planning crew. The UI collects real ones: uv run ui
+# Sample interview summary for training and testing the Planning crew on its own
 INPUTS = {
     'interview_summary': 'Task manager UI. Users log in, see their tasks, add and delete them. '
                          'Endpoints: POST /api/auth/login, GET /api/tasks, POST /api/tasks, DELETE /api/tasks/:id.',
@@ -16,12 +21,18 @@ INPUTS = {
 
 def run():
     """
-    Run the Planning crew.
+    Run the whole flow in the terminal, as the UI does on screen (uv run ui):
+    intake flow with the sample form -> HITL #1 -> Design crew -> chat with the Change Router.
     """
-    try:
-        Alikable().planning_crew().kickoff(inputs=INPUTS)
-    except Exception as e:
-        raise Exception(f"An error occurred while running the crew: {e}")
+    load_dotenv()
+    state = run_in_terminal()
+    if state.stage != "approved":
+        return
+    print("\nSpec approved. The Design crew is designing your site...")
+    _, approved = run_design_phase(state.site_spec)
+    print(("The Design Critic approved it." if approved else "The Design Critic still had fixes after 3 rounds.")
+          + f" Saved to {DESIGN_DIR.as_posix()}/.")
+    change_router.main(state.chat_id)   # same chat_id, so the Chat Agent recalls the intake
 
 
 def train():

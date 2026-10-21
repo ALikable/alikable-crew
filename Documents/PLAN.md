@@ -14,12 +14,13 @@ in the same process. It is not a web API.
 | Polish & Iterate loop (`flows/polish.py`) | Built. QA Tester ‖ Consistency Auditor → Fixer one item at a time, `POLISH_ROUNDS` (default 1) rounds of fixes then a report-only check; writes `output/polish_report.json` |
 | Build Checker tool (`tools/build_checker.py`) | Built. Static: HTML, local links, CDN allowlist, CSS braces, `node --check`, JSON, secrets |
 | Rollback (`site_files.py`) | Built. A fix that adds build errors is undone at once; a change job checkpoints the last approved build and **reject** restores it |
-| Intake (`app.py`, `guardrails.py`) | Partly built. `uv run ui`: intake form → input guardrail → Discovery Interviewer rounds (multiple choice, max 3) → Planning crew writes `output/site_spec.json`. Stops there: no HITL #1, no design → build, no hand-over to the chat |
-| Planning crew + review loop (`flows/phases.py`) | Built (`run_interview`, `run_planning_phase`, max 2 rounds). Not yet called by the change pipeline: `TODO(planning crew)` in `ChangePipelineFlow.run_planning` |
+| Intake flow (`flows/intake.py`, `guardrails.py`) | Built. `IntakeFlow`, one kickoff per user action (`start_intake`, `answer_interview`, `revise_spec`, `approve_spec`), each returning an `IntakeState` whose `stage` (form, interview, review, approved) says what to show: intake form → input guardrail → Discovery Interviewer rounds (multiple choice, max 3) → Planning crew → HITL #1, which saves `output/site_spec.json`. `run_in_terminal()` is the terminal version |
+| Planning crew + review loop (`flows/intake.py`) | Built (`run_interview`, `run_planning_phase`, max 2 rounds, using `run_review_loop` from `flows/phases.py`). Not yet called by the change pipeline: `TODO(planning crew)` in `ChangePipelineFlow.run_planning` |
+| `main.py` (`crewai run`) | Runs the whole flow in the terminal: intake flow with a sample form → HITL #1 → Design crew → the Change Router chat with the intake's `chat_id`. `train`/`test`/`replay` still use the Planning crew alone |
 | Implementation crew | Defined in `crew.py`, not built. `TODO(<crew>)` placeholder in the change pipeline |
 | Deploy Guide crew (`flows/create_deploy_guide.py`) | Built. `run_deploy_guide_phase(host, detail)`: Release Builder (`tools/release_builder.py`) zips `output/site/` to `output/site.zip` and smoke-tests it on localhost; the writer makes `output/DEPLOY.md` (also inside the zip) for one host (netlify, vercel, github_pages, s3) at quick/standard/detailed depth; Python checks headings, secrets and file names, max 2 rounds. Started by approve in the chat |
 | Chat memory (`crew.py`) | Built. One shared `Memory` in `output/memory/` (LLM: `MEMORY_MODEL`, default `gpt-5.4-mini`), one scope per chat, `/chat/<chat_id>`. Only `chat_crew` saves; `change_router_crew` and check jobs recall read-only; every other crew has no memory. The intake form and interview answers are saved there before planning. Not undone by reject |
-| Gradio UI | Intake screen built (`src/alikable/app.py`). Chat, jobs and approval panels not built (this plan) |
+| Gradio UI | Intake screen built (`src/alikable/app.py`): draws the intake flow's screens up to HITL #1, then runs the Design crew. Chat, jobs and approval panels not built (this plan) |
 
 ## The contract the UI builds on
 
@@ -125,12 +126,12 @@ def send(text, history, chat_id):
 The first build happens before the chat, so the UI needs a first screen and two more
 approval gates.
 
-- **Done** (`app.py`): the intake form screen, the input guardrail (`guardrails.py`:
-  front end only, endpoints as method + path, secrets removed), and the Discovery
-  interview as rounds of multiple-choice questions on screen (`human_input` was dropped).
-  Today the screen ends by showing `site_spec.json`.
-- Still to do: after the spec is written, show the spec gate below instead of ending,
-  then replace the intake screen with the chat.
+- **Done** (`flows/intake.py`, drawn by `app.py`): the intake form, the input guardrail
+  (`guardrails.py`: front end only, endpoints as method + path, secrets removed), the
+  Discovery interview as rounds of multiple-choice questions on screen (`human_input` was
+  dropped), the Planning crew, and the spec gate (HITL #1). After approval `app.py` runs
+  the Design crew.
+- Still to do: the design gate, then replace the intake screen with the chat.
 - Generalize the approval state so one banner serves all three gates:
   `awaiting_approval: bool` → `awaiting: Literal["spec", "design", "build"] | None`.
   - Spec gate (HITL #1): show `site_spec.json`; Approve or describe edits → planning.
@@ -151,11 +152,12 @@ approval gates.
 
 In rough order; the UI steps above note which ones they depend on.
 
-1. **Intake flow** (Step 4): intake form → input guardrail → planning → HITL #1 →
-   design → HITL #2 → implementation → polish → HITL #3 → deploy, as a Flow that reuses
-   the change pipeline's crew steps and ends in a `ChatSession`.
-2. **Planning crew in the change pipeline**: the crew and `run_planning_phase()` are
-   built (and the `knowledge_sources` typo is fixed). Replace `TODO(planning crew)` in
+1. **Intake flow** (Step 4): intake form → input guardrail → planning → HITL #1 is built
+   (`flows/intake.py`). Still to do: design → HITL #2 → implementation → polish →
+   HITL #3 → deploy, reusing the change pipeline's crew steps and ending in a
+   `ChatSession`. Today `main.py` and `app.py` run only the design after HITL #1.
+2. **Planning crew in the change pipeline**: the crew and `run_planning_phase()`
+   (`flows/intake.py`) are built (and the `knowledge_sources` typo is fixed). Replace `TODO(planning crew)` in
    `ChangePipelineFlow.run_planning` with a call to it. It takes an interview summary,
    not a change request, so pass the current spec plus the change as the summary,
    then reload `site_spec` from `SITE_SPEC`.

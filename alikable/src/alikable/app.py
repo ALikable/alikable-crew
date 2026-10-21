@@ -1,47 +1,38 @@
 """
 Gradio UI for the start of the Flow: intake form -> input guardrail -> Planning crew -> HITL #1 -> Design crew.
 
-The Discovery Interviewer asks its questions one tab each, as options to pick from,
-plus Other for a custom answer. When nothing important is unclear, or after MAX_ROUNDS,
-the Planning crew drafts the spec. The user approves it (saved to output/site_spec.json),
-edits it by hand, or describes changes for the Planning crew. Approving starts the Design
-crew on output/site_spec.json, which saves the design to output/design/. Run from the project root: uv run ui
-
-Submitting the form starts a chat: its chat_id is the chat's memory scope (crew.py).
-Before planning, the form and the interview answers are saved to that memory, so the
-Chat Agent knows what the user asked for. The interview and planning crews have no
-memory of their own.
+The intake flow (flows/intake.py) does the work up to HITL #1; this file only draws its
+screens. The Discovery Interviewer asks its questions one tab each, as options to pick
+from, plus Other for a custom answer. Then the user approves the spec (saved to
+output/site_spec.json), edits it by hand, or describes changes for the Planning crew.
+Approving starts the Design crew on output/site_spec.json, which saves the design to
+output/design/. Run from the project root: uv run ui
 """
 
-import uuid
+import queue
+from concurrent.futures import ThreadPoolExecutor
 
 import gradio as gr
 from dotenv import load_dotenv
 
-from alikable.crew import chat_memory
-from alikable.flows.phases import DESIGN_DIR, SITE_SPEC, run_design_phase, run_interview, run_planning_phase, save_site_spec
-from alikable.guardrails import SECRET_WARNING, check_intake, redact_secrets
-from alikable.models import IntakeForm
+from alikable.flows import intake
+from alikable.flows.intake import MAX_QUESTIONS
+from alikable.flows.phases import DESIGN_DIR, SITE_SPEC, run_design_phase
+from alikable.models import IntakeForm, IntakeState
 
-MAX_QUESTIONS = 4   # question slots on screen, matches the interview task's limit
-MAX_ROUNDS = 3      # interview rounds before the Spec Writer starts anyway
 OTHER = "Other"
-NO_ANSWER = "No answer, choose a sensible default"
 QUALITIES = ["Intuitive", "Responsive", "Accessible", "Fast"]
-
-
-def clean(text: str) -> str:
-    """Input guardrail for typed text: removes secrets and tells the user."""
-    if (redacted := redact_secrets(text)) != text:
-        gr.Warning(SECRET_WARNING)
-    return redacted
+STEP_STATUS = {   # the intake flow's steps that take long enough to show
+    "discovery interviewer": "_The Discovery Interviewer is reading your answers..._",
+    "planning crew": "_The Planning crew is writing the plan specification. This takes a few minutes..._",
+}
 
 
 with gr.Blocks(title="Alikable") as demo:
-    state = gr.State({})
+    state = gr.State(IntakeState())
     gr.Markdown("# Alikable\nHere are my endpoints, give me the UI: a plain HTML, CSS and JavaScript front end.")
 
-    with gr.Column() as intake:
+    with gr.Column() as intake_form:
         description = gr.Textbox(label="What should the app do?", lines=3,
                                  placeholder="Users log in, see their tasks, add and delete them.")
         audience = gr.Textbox(label="Who will use it?")
@@ -72,77 +63,74 @@ with gr.Blocks(title="Alikable") as demo:
                 revise = gr.Button("Request changes")
     tabs, radios, others = (list(c) for c in zip(*slots))
 
-    def plan(s: dict):
-        """Planning crew drafts the spec, then HITL #1 shows it for approval."""
-        yield {status: "_The Planning crew is writing the plan specification. This takes a few minutes..._",
-               intake: gr.Column(visible=False), interview: gr.Column(visible=False), review: gr.Column(visible=False)}
-        site_spec, approved = run_planning_phase(s["summary"])
-        note = "The Spec Critic approved it." if approved else "The Spec Critic still had fixes after 2 rounds, so check it carefully."
-        yield {state: s, status: f"### Your plan specification is ready\n{note} Approve it to save {SITE_SPEC.as_posix()}, or ask for changes.",
-               review: gr.Column(visible=True), spec: site_spec, changes: ""}
+    def run(action, *args):
+        """Runs one intake action in the background, showing each long step as it starts. Returns the new state."""
+        steps: queue.Queue[str] = queue.Queue()
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(action, *args, on_step=steps.put)
+            while not (future.done() and steps.empty()):
+                try:
+                    step = steps.get(timeout=0.5)
+                except queue.Empty:
+                    continue
+                if step in STEP_STATUS:
+                    yield {status: STEP_STATUS[step]}
+        return future.result()
 
-    def advance(s: dict):
-        """Runs one interview round and shows its questions, or plans once nothing is unclear."""
-        yield {status: "_The Discovery Interviewer is reading your answers..._",
-               intake: gr.Column(visible=False), interview: gr.Column(visible=False)}
-        result = run_interview(s["intake"], s["answers"] or "None")
-        questions = result.questions[:MAX_QUESTIONS]
-        if not questions or s["round"] >= MAX_ROUNDS:
-            # Once per chat, not in plan(): request_changes plans again. Both are already free
-            # of secrets: the input guardrail and redact_secrets ran on them.
-            chat_memory(s["chat_id"]).remember(
-                f"Intake form:\n{s['intake']}\n\nInterview answers:\n{s['answers'] or 'None'}",
-                source="intake",
-            )
-            yield from plan({**s, "summary": result.summary})
-            return
-        hidden = MAX_QUESTIONS - len(questions)
-        shown = [gr.Radio([(f"{o.label} — {o.description}", o.label) for o in q.options]
-                          + [(f"{OTHER} — type your own answer", OTHER)], value=None, label=q.question) for q in questions]
-        yield {state: {**s, "round": s["round"] + 1, "questions": [q.question for q in questions]},
-               status: "", interview: gr.Column(visible=True), question_tabs: gr.Tabs(selected=0),
-               **dict(zip(tabs, [gr.Tab(q.header, visible=True) for q in questions] + [gr.Tab(visible=False)] * hidden)),
-               **dict(zip(radios, shown + [gr.Radio(value=None)] * hidden)),
-               **{o: gr.Textbox(value="", visible=False) for o in others}}
+    def show(s: IntakeState) -> dict:
+        """The screen for the flow's stage, with its warnings and problems."""
+        for warning in s.warnings:
+            gr.Warning(warning)
+        screen = {state: s, intake_form: gr.Column(visible=s.stage == "form"),
+                  interview: gr.Column(visible=s.stage == "interview"),
+                  review: gr.Column(visible=s.stage in ("review", "approved"))}
+        if s.problems:
+            return {**screen, status: "**Please fix:**\n" + "".join(f"\n- {p}" for p in s.problems)}
+        if s.stage == "interview":
+            hidden = MAX_QUESTIONS - len(s.questions)
+            shown = [gr.Radio([(f"{o.label} — {o.description}", o.label) for o in q.options]
+                              + [(f"{OTHER} — type your own answer", OTHER)], value=None, label=q.question)
+                     for q in s.questions]
+            return {**screen, status: "", question_tabs: gr.Tabs(selected=0),
+                    **dict(zip(tabs, [gr.Tab(q.header, visible=True) for q in s.questions] + [gr.Tab(visible=False)] * hidden)),
+                    **dict(zip(radios, shown + [gr.Radio(value=None)] * hidden)),
+                    **{o: gr.Textbox(value="", visible=False) for o in others}}
+        if s.stage == "review":
+            note = "The Spec Critic approved it." if s.spec_approved else "The Spec Critic still had fixes after 2 rounds, so check it carefully."
+            return {**screen, status: f"### Your plan specification is ready\n{note} Approve it to save {SITE_SPEC.as_posix()}, or ask for changes.",
+                    spec: s.site_spec, changes: ""}
+        return screen
 
     def begin(desc, aud, look, quals, url, eps):
-        """Intake form -> input guardrail -> first interview round."""
-        try:
-            form, warnings = check_intake(IntakeForm(
-                description=desc, audience=aud, look_and_feel=look, qualities=quals, api_base_url=url.strip(),
-                endpoints=[e.strip() for e in eps.splitlines() if e.strip()],
-            ))
-        except ValueError as e:
-            yield {status: "**Please fix:**\n" + "".join(f"\n- {line}" for line in str(e).splitlines())}
-            return
-        for warning in warnings:
-            gr.Warning(warning)
-        yield from advance({"chat_id": uuid.uuid4().hex, "intake": form.model_dump_json(indent=2),
-                            "answers": "", "round": 0})
+        """Intake form -> intake flow: input guardrail, then the first interview round."""
+        yield {status: "_Checking your answers..._", intake_form: gr.Column(visible=False)}
+        form = IntakeForm(description=desc, audience=aud, look_and_feel=look, qualities=quals, api_base_url=url.strip(),
+                          endpoints=[e.strip() for e in eps.splitlines() if e.strip()])
+        s = yield from run(intake.start_intake, form)
+        yield show(s)
 
-    def answer(s: dict, *values):
-        """Adds this round's answers to the transcript (secrets removed), then runs the next round."""
+    def answer(s: IntakeState, *values):
+        """Sends this round's answers; the flow asks the next round or writes the spec."""
         picks, typed = values[:MAX_QUESTIONS], values[MAX_QUESTIONS:]
-        qa = "\n".join(f"Q: {q}\nA: {(t.strip() if p == OTHER else p) or NO_ANSWER}"
-                       for q, p, t in zip(s["questions"], picks, typed))
-        yield from advance({**s, "answers": f"{s['answers']}\n{clean(qa)}".strip()})
+        replies = [(t if p == OTHER else p) or "" for p, t in zip(picks, typed)]
+        yield {interview: gr.Column(visible=False)}
+        s = yield from run(intake.answer_interview, s.chat_id, replies)
+        yield show(s)
 
-    def request_changes(s: dict, request: str):
+    def request_changes(s: IntakeState, request: str):
         """HITL #1 edit: the Planning crew rewrites the spec with the user's changes."""
-        if not request.strip():
-            gr.Warning("Describe what to change first.")
-            return
-        yield from plan({**s, "summary": f"{s['summary']}\n\nChanges the user asked for after reading the spec:\n{clean(request)}"})
+        yield {review: gr.Column(visible=False)}
+        s = yield from run(intake.revise_spec, s.chat_id, request)
+        yield show(s)
 
-    def approve_spec(site_spec: str):
-        """HITL #1 approve: saves the spec as site_spec.json, then the Design crew designs the site from it."""
-        try:
-            save_site_spec(site_spec)
-        except ValueError as e:
-            yield {status: f"**The spec is not valid JSON** ({e}). Fix it above or ask for changes."}
+    def approve_spec(s: IntakeState, site_spec: str):
+        """HITL #1 approve: the flow saves the spec, then the Design crew designs the site from it."""
+        s = intake.approve_spec(s.chat_id, site_spec)
+        if s.problems:
+            yield show(s)
             return
-        yield {status: f"### Spec approved\nSaved to {SITE_SPEC.as_posix()}.\n\n_The Design crew is designing "
-                       "your site. This takes a few minutes..._",
+        yield {state: s, status: f"### Spec approved\nSaved to {SITE_SPEC.as_posix()}.\n\n_The Design crew is designing "
+                                 "your site. This takes a few minutes..._",
                spec: gr.Code(interactive=False), actions: gr.Column(visible=False)}
         try:
             _, approved = run_design_phase(SITE_SPEC.read_text(encoding="utf-8"))
@@ -153,11 +141,12 @@ with gr.Blocks(title="Alikable") as demo:
         note = "The Design Critic approved it." if approved else "The Design Critic still had fixes after 3 rounds, so check it carefully."
         yield {status: f"### Your design is ready\n{note} Saved to {DESIGN_DIR.as_posix()}/."}
 
-    outputs = [state, intake, interview, question_tabs, status, review, spec, changes, *tabs, *radios, *others]
+    outputs = [state, intake_form, interview, question_tabs, status, review, spec, changes, actions,
+               *tabs, *radios, *others]
     start.click(begin, [description, audience, look_and_feel, qualities, api_base_url, endpoints], outputs)
     submit.click(answer, [state, *radios, *others], outputs)
     revise.click(request_changes, [state, changes], outputs)
-    approve.click(approve_spec, spec, [status, spec, actions])
+    approve.click(approve_spec, [state, spec], outputs)
     for radio, other in zip(radios, others):
         radio.change(lambda choice: gr.Textbox(visible=choice == OTHER), radio, other)
 

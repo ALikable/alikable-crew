@@ -59,6 +59,30 @@ class Interview(BaseModel):
     )
 
 
+IntakeStage = Literal["form", "interview", "review", "approved"]
+
+
+class IntakeState(BaseModel):
+    """The intake flow, kept between the user's actions (flows/intake.py)."""
+
+    chat_id: str = ""               # made when the form is submitted; also the chat's memory scope
+    action: str = ""                # what the user just did: form, answers, changes or approve
+    form: IntakeForm | None = None  # for form: as typed, before the input guardrail
+    replies: list[str] = []         # for answers: one per question, "" when left blank
+    request: str = ""               # for changes: what to change in the spec
+    intake: str = ""                # the checked form as JSON, secrets removed
+    answers: str = ""               # the interview so far as Q/A lines, secrets removed
+    round: int = 0                  # interview rounds asked
+    max_rounds: int = 3             # rounds before the Spec Writer starts anyway
+    questions: list[Question] = []  # this round's questions
+    summary: str = ""               # the Discovery Interviewer's summary, plus the changes asked for
+    site_spec: str = ""             # the latest draft; at approved, the saved spec
+    spec_approved: bool = False     # the Spec Critic approved the draft
+    stage: IntakeStage = "form"     # what the user is shown next
+    warnings: list[str] = []        # for this action only, e.g. a secret was removed
+    problems: list[str] = []        # why this action was refused; the stage did not change
+
+
 # ------------------------------------------------------------------ Design crew
 
 class PageLayout(BaseModel):

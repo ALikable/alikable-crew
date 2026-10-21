@@ -1,10 +1,12 @@
 """
 Phases that run a crew more than once.
 
-Interview: one Discovery Interviewer round per batch of user answers.
-Planning (max 2 rounds) and Design (max 3 rounds): the crew runs its tasks once,
-and the review loop runs it again with the critic's changes as {feedback} until
-the critic says APPROVED. At the end, each part of the design is saved as its own file.
+Design (max 3 rounds): the crew runs its tasks once, and the review loop runs it
+again with the critic's changes as {feedback} until the critic says APPROVED. At the
+end, each part of the design is saved as its own file. Planning uses the same review
+loop from the intake flow (flows/intake.py).
+Implementation (max 3 rounds): the builders write output/site/, then the Code
+Reviewer checks the files on disk.
 """
 
 import json
@@ -17,11 +19,10 @@ from crewai.crews.crew_output import CrewOutput
 import shutil
 
 from alikable.crew import Alikable
-from alikable.models import DesignSystem, FileChange, Interview, SiteBuild
+from alikable.models import DesignSystem, FileChange, SiteBuild
 from alikable.site_files import SITE_DIR, apply_changes, read_site
 
 REVIEW_LOG = Path("output/design_review_log.md")
-SPEC_REVIEW_LOG = Path("output/spec_review_log.md")
 DESIGN_DIR = Path("output/design")
 CODE_REVIEW_LOG = Path("output/code_review_log.md")
 SITE_SPEC = Path("output/site_spec.json")   # the approved spec every later crew reads
@@ -85,30 +86,6 @@ def run_review_loop(name: str, make_crew: Callable[[], Crew], inputs: dict,
 
     log_path.write_text(log, encoding="utf-8")
     return result, is_approved(review)
-
-
-def run_interview(intake_form: str, answers: str) -> Interview:
-    """One interview round: the questions to ask next (none when done) and the summary so far."""
-    result = Alikable().interview_crew().kickoff(
-        inputs={"intake_form": intake_form, "answers": answers}
-    )
-    return result.pydantic or Interview(questions=[], summary=result.raw)   # unstructured: treat as done
-
-
-def run_planning_phase(interview_summary: str, max_rounds: int = 2) -> tuple[str, bool]:
-    """Returns (site_spec, approved)."""
-    result, approved = run_review_loop(
-        "Spec", lambda: Alikable().planning_crew(), {"interview_summary": interview_summary},
-        max_rounds, SPEC_REVIEW_LOG,
-    )
-    return result.tasks_output[1].raw, approved       # Copywriter's output is the complete spec
-
-
-def save_site_spec(site_spec: str) -> None:
-    """HITL #1 approved: saves the spec to SITE_SPEC. Raises ValueError if it is not valid JSON."""
-    spec = json.loads(site_spec.strip().removeprefix("```json").removeprefix("```").removesuffix("```"))
-    SITE_SPEC.parent.mkdir(parents=True, exist_ok=True)
-    SITE_SPEC.write_text(json.dumps(spec, indent=2), encoding="utf-8")
 
 
 def run_design_phase(site_spec: str, max_rounds: int = 3) -> tuple[str, bool]:

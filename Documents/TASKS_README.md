@@ -31,9 +31,10 @@ and crews did not exist yet.
 - **Interview**: `interview_crew` runs one `interview_task` round per batch of answers. It returns an
   `Interview` (questions with options, plus a summary), and the Gradio UI shows each question as
   options plus Other. `human_input` was removed because it reads from the console.
-- **UI** (`app.py`, `uv run ui`): intake form -> input guardrail (`guardrails.py`) -> interview
-  (max 3 rounds) -> `planning_crew` (Spec Writer, Copywriter, Spec Critic, max 2 rounds via
-  `flows/phases.run_review_loop`, shared with the Design phase).
+- **Intake flow** (`flows/intake.py`, drawn by `app.py` / `uv run ui`): intake form -> input
+  guardrail (`guardrails.py`) -> interview (max 3 rounds) -> `planning_crew` (Spec Writer,
+  Copywriter, Spec Critic, max 2 rounds via `flows/phases.run_review_loop`, shared with the Design
+  phase) -> HITL #1.
 - **Router output** is a `RouteDecision` (planning, design, implementation, polish or clarify, plus the
   restated request). The chat and change pipeline are in `flows/change_router.py`; see `PLAN.md`.
 - Verified against the CrewAI 1.15.28 source (the locked version): YAML keys are real `Task` fields,
@@ -42,10 +43,10 @@ and crews did not exist yet.
 
 ## Not done (out of scope for tasks.yaml, needed next)
 
-- **The Flow**: HITL #1 and #2, parallel Page Builders, and the hand-over from the intake UI to the
-  chat. The chat, Change Router, polish loop and HITL #3 are built; `PLAN.md` tracks the rest.
-  `crewai run` runs the Planning crew on the sample summary in `main.py`; `uv run ui` runs intake,
-  guardrail and the Planning phase.
+- **The Flow**: HITL #2, parallel Page Builders, and the hand-over from the intake UI to the
+  chat. The intake flow with HITL #1, the chat, Change Router, polish loop and HITL #3 are built;
+  `PLAN.md` tracks the rest. `crewai run` runs the intake flow on the sample form in the terminal,
+  then the design and the chat (`main.py`); `uv run ui` runs the intake flow on screen, then the design.
 - **Tools**: Release Builder, MCP Filesystem / Playwright / GitHub, research team, memory. Tasks that
   mention a browser or packaging assume those tools once wired. The Build Checker
   (`tools/build_checker.py`) is built and used by the QA Tester and the polish loop.

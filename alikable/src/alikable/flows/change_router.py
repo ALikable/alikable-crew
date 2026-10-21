@@ -6,8 +6,8 @@ chat_status(chat_id) to refresh job statuses without sending one. Both return a
 ChatResponse: the reply, whether a build is waiting for approval (HITL #3), and the
 status of every background job in the session.
 
-The chat_id is made when the intake form is submitted (app.py) and is the chat's
-memory scope, /chat/<chat_id> (crew.py). Only the Chat Agent saves memories; the
+The chat_id is made when the intake form is submitted (flows/intake.py) and is the
+chat's memory scope, /chat/<chat_id> (crew.py). Only the Chat Agent saves memories; the
 Change Router and background checks only recall them.
 
 For each message the Chat Agent picks one action:
@@ -27,8 +27,9 @@ kept, so the checkpoint is always the last approved build. Approving clears it.
 Change, deploy and rollback jobs run one at a time in the order they were sent, so
 two jobs never edit the site at once. Check jobs only report, so they run in parallel.
 
-Not built yet (placeholders below, marked TODO):
-  - the intake flow, which makes the first build and then hands over to this chat
+The intake flow (flows/intake.py) writes the approved spec and hands its chat_id over
+to this chat (main.py). Not built yet (placeholders below, marked TODO):
+  - the first build between the intake flow and this chat (only the design runs)
   - the planning and implementation crews in the change pipeline
 Until then the chat reads whatever is in output/site_spec.json, output/design/ and
 output/site/.
@@ -86,8 +87,8 @@ class ChangePipelineFlow(Flow[PipelineState]):
     @listen("planning")
     def run_planning(self):
         self._step("planning crew")
-        # TODO(planning crew): not built yet. Kick it off with the current spec and the
-        # change as its intake form, then reload site_spec from SITE_SPEC.
+        # TODO(planning crew): call run_planning_phase (flows/intake.py) with the current
+        # spec and the change as its summary, then reload site_spec from SITE_SPEC.
         self.state.notes.append("Planning crew not built yet; skipped.")
 
     @listen(or_("design", run_planning))
@@ -340,12 +341,13 @@ def chat_status(chat_id: str) -> ChatResponse:
     return _get_session(chat_id).response()
 
 
-def main():
-    """Terminal stand-in for the UI. Type 'status' to refresh jobs, 'exit' to quit."""
+def main(chat_id: str | None = None):
+    """Terminal stand-in for the UI. Type 'status' to refresh jobs, 'exit' to quit.
+    chat_id comes from the intake flow (main.py); without one this starts a new chat."""
     from dotenv import load_dotenv
 
     load_dotenv()
-    chat_id = uuid.uuid4().hex   # the UI makes this at the intake form
+    chat_id = chat_id or uuid.uuid4().hex
     print("Alikable chat. Type 'status' to see jobs, 'exit' to quit.")
     while (message := input("\nYou: ").strip()).lower() not in {"exit", "quit"}:
         if message.lower() == "status":
