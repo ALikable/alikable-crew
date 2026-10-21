@@ -1,159 +1,117 @@
 """
-Gradio UI for the start of the Flow: intake form -> input guardrail -> Planning crew -> HITL #1 -> Design crew.
+The Alikable UI: places the screens of the ui/ package in one gr.Blocks and wires them
+together. Each screen draws itself (ui/*.py); this file decides which one shows.
 
-The intake flow (flows/intake.py) does the work up to HITL #1; this file only draws its
-screens. The Discovery Interviewer asks its questions one tab each, as options to pick
-from, plus Other for a custom answer. Then the user approves the spec (saved to
-output/site_spec.json), edits it by hand, or describes changes for the Planning crew.
-Approving starts the Design crew on output/site_spec.json, which saves the design to
-output/design/. Run from the project root: uv run ui
+  Project picker --New project--> Intake (form, interview, spec gate, design)
+        │                                   │ design written
+        └--select a project--> Chat ------- ┘  (chat, jobs, approval notice, downloads)
+
+Which screen a project opens on comes from one rule, ui/navigation.screen_for. The open
+project's chat_id is kept in the browser, so reloading the page reopens it. While the
+chat shows, a timer refreshes the jobs panel and downloads every 2 seconds, and only
+redraws them when something changed.
+
+Run from the project root: uv run ui (main.run loads .env first)
 """
 
-import queue
-from concurrent.futures import ThreadPoolExecutor
-
 import gradio as gr
-from dotenv import load_dotenv
 
-from alikable.flows import intake
-from alikable.flows.intake import MAX_QUESTIONS
-from alikable.flows.phases import DESIGN_DIR, SITE_SPEC, run_design_phase
-from alikable.models import IntakeForm, IntakeState
+from alikable.flows import change_router, intake as intake_flow
+from alikable.projects import PROJECTS, Project
+from alikable.ui.build import BuildPanel
+from alikable.ui.chat import CSS, ChatScreen
+from alikable.ui.deploy import DeployPanel
+from alikable.ui.intake import IntakeScreen
+from alikable.ui.navigation import Screen, Screens, screen_for
+from alikable.ui.projects import ProjectsScreen
 
-OTHER = "Other"
-QUALITIES = ["Intuitive", "Responsive", "Accessible", "Fast"]
-STEP_STATUS = {   # the intake flow's steps that take long enough to show
-    "discovery interviewer": "_The Discovery Interviewer is reading your answers..._",
-    "planning crew": "_The Planning crew is writing the plan specification. This takes a few minutes..._",
-}
+REFRESH_SECONDS = 2
 
 
-with gr.Blocks(title="Alikable") as demo:
-    state = gr.State(IntakeState())
-    gr.Markdown("# Alikable\nHere are my endpoints, give me the UI: a plain HTML, CSS and JavaScript front end.")
+def build_app() -> gr.Blocks:
+    with gr.Blocks(title="Alikable") as demo:
+        chat_id = gr.BrowserState("", storage_key="alikable_chat_id")
+        seen = gr.State("")   # what the panels last drew, so the timer skips unchanged updates
+        with gr.Row(equal_height=True):
+            gr.Markdown("# Alikable\nHere are my endpoints, give me the UI: a plain HTML, CSS and JavaScript front end.")
+            all_projects = gr.Button("← All projects", size="sm", variant="secondary", scale=0, min_width=0,
+                                     visible=False)
 
-    with gr.Column() as intake_form:
-        description = gr.Textbox(label="What should the app do?", lines=3,
-                                 placeholder="Users log in, see their tasks, add and delete them.")
-        audience = gr.Textbox(label="Who will use it?")
-        look_and_feel = gr.Textbox(label="How should it look?", placeholder="Clean, light theme, blue accent")
-        qualities = gr.CheckboxGroup(QUALITIES, label="What matters most?")
-        api_base_url = gr.Textbox(label="API base URL", info="Leave empty if there is no backend yet; the pages will use mock data.")
-        endpoints = gr.Textbox(label="Endpoints", lines=4, info="One per line: method and path. Never paste tokens or passwords.",
-                               placeholder="POST /api/auth/login\nGET /api/tasks")
-        start = gr.Button("Start", variant="primary")
-
-    with gr.Column(visible=False) as interview:
-        gr.Markdown("### The Discovery Interviewer has a few questions\nAnswer each tab: pick an option, or Other to type your own. Leave any blank to let the agents decide.")
-        with gr.Tabs() as question_tabs:
-            slots = []
-            for i in range(MAX_QUESTIONS):
-                with gr.Tab(f"Question {i + 1}", id=i, visible=False) as tab:
-                    slots.append((tab, gr.Radio(), gr.Textbox(label="Your answer", visible=False)))
-        submit = gr.Button("Submit answers", variant="primary")
-
-    status = gr.Markdown()
-    with gr.Column(visible=False) as review:
-        spec = gr.Code(language="json", label="Plan specification (you can edit it before approving)", interactive=True)
-        with gr.Column() as actions:
-            changes = gr.Textbox(label="Or describe what to change", lines=2,
-                                 info="The Planning crew rewrites the spec with these changes; hand edits above are not kept.")
+        with gr.Column() as projects_column:
+            projects = ProjectsScreen()
+        with gr.Column(visible=False) as intake_column:
+            intake = IntakeScreen(chat_id)
+        with gr.Column(visible=False) as chat_column:
             with gr.Row():
-                approve = gr.Button("Approve spec", variant="primary")
-                revise = gr.Button("Request changes")
-    tabs, radios, others = (list(c) for c in zip(*slots))
+                with gr.Column(scale=3):
+                    chat = ChatScreen(chat_id)
+                with gr.Column(scale=2):
+                    build = BuildPanel(chat_id)
+                    deploy = DeployPanel()
+        timer = gr.Timer(REFRESH_SECONDS, active=False)
+        screens = Screens(projects=projects_column, intake=intake_column, chat=chat_column)
+        everything = [chat_id, seen, timer, all_projects, *screens.outputs, *projects.outputs, *intake.outputs,
+                      *chat.outputs, *build.outputs, *deploy.outputs]
+        panel_outputs = [seen, *build.outputs, *deploy.outputs]
 
-    def run(action, *args):
-        """Runs one intake action in the background, showing each long step as it starts. Returns the new state."""
-        steps: queue.Queue[str] = queue.Queue()
-        with ThreadPoolExecutor(max_workers=1) as pool:
-            future = pool.submit(action, *args, on_step=steps.put)
-            while not (future.done() and steps.empty()):
-                try:
-                    step = steps.get(timeout=0.5)
-                except queue.Empty:
-                    continue
-                if step in STEP_STATUS:
-                    yield {status: STEP_STATUS[step]}
-        return future.result()
+        def panels(cid: str) -> dict:
+            """The jobs panel and downloads, and what they show."""
+            project, response = Project(cid), change_router.chat_status(cid)
+            return {**build.render(project, response), **deploy.render(project),
+                    seen: build.signature(response) + "|" + deploy.signature(project)}
 
-    def show(s: IntakeState) -> dict:
-        """The screen for the flow's stage, with its warnings and problems."""
-        for warning in s.warnings:
-            gr.Warning(warning)
-        screen = {state: s, intake_form: gr.Column(visible=s.stage == "form"),
-                  interview: gr.Column(visible=s.stage == "interview"),
-                  review: gr.Column(visible=s.stage in ("review", "approved"))}
-        if s.problems:
-            return {**screen, status: "**Please fix:**\n" + "".join(f"\n- {p}" for p in s.problems)}
-        if s.stage == "interview":
-            hidden = MAX_QUESTIONS - len(s.questions)
-            shown = [gr.Radio([(f"{o.label} — {o.description}", o.label) for o in q.options]
-                              + [(f"{OTHER} — type your own answer", OTHER)], value=None, label=q.question)
-                     for q in s.questions]
-            return {**screen, status: "", question_tabs: gr.Tabs(selected=0),
-                    **dict(zip(tabs, [gr.Tab(q.header, visible=True) for q in s.questions] + [gr.Tab(visible=False)] * hidden)),
-                    **dict(zip(radios, shown + [gr.Radio(value=None)] * hidden)),
-                    **{o: gr.Textbox(value="", visible=False) for o in others}}
-        if s.stage == "review":
-            note = "The Spec Critic approved it." if s.spec_approved else "The Spec Critic still had fixes after 2 rounds, so check it carefully."
-            return {**screen, status: f"### Your plan specification is ready\n{note} Approve it to save {SITE_SPEC.as_posix()}, or ask for changes.",
-                    spec: s.site_spec, changes: ""}
-        return screen
+        def show(screen: Screen) -> dict:
+            """One screen visible; the back button and the refresh timer only where they apply."""
+            return {**screens.show(screen), all_projects: gr.Button(visible=screen != "projects"),
+                    timer: gr.Timer(active=screen == "chat")}
 
-    def begin(desc, aud, look, quals, url, eps):
-        """Intake form -> intake flow: input guardrail, then the first interview round."""
-        yield {status: "_Checking your answers..._", intake_form: gr.Column(visible=False)}
-        form = IntakeForm(description=desc, audience=aud, look_and_feel=look, qualities=quals, api_base_url=url.strip(),
-                          endpoints=[e.strip() for e in eps.splitlines() if e.strip()])
-        s = yield from run(intake.start_intake, form)
-        yield show(s)
+        def open_project(cid: str) -> dict:
+            """Shows the screen the project is at; the picker if there is none."""
+            destination = screen_for(cid)
+            if destination.notice:
+                gr.Warning(destination.notice)
+            view = show(destination.screen)
+            if destination.screen == "projects":
+                return {**view, **projects.render(), chat_id: ""}
+            if destination.screen == "intake":
+                return {**view, **intake.render(intake_flow.current_state(cid), notify=False), chat_id: cid}
+            return {**view, **chat.render(Project(cid)), **panels(cid), chat_id: cid}
 
-    def answer(s: IntakeState, *values):
-        """Sends this round's answers; the flow asks the next round or writes the spec."""
-        picks, typed = values[:MAX_QUESTIONS], values[MAX_QUESTIONS:]
-        replies = [(t if p == OTHER else p) or "" for p, t in zip(picks, typed)]
-        yield {interview: gr.Column(visible=False)}
-        s = yield from run(intake.answer_interview, s.chat_id, replies)
-        yield show(s)
+        def open_designed(cid: str) -> dict:
+            """After the spec gate: opens the chat once the design is written, otherwise stays put."""
+            return open_project(cid) if cid and Project(cid).design_json.exists() else unchanged(everything)
 
-    def request_changes(s: IntakeState, request: str):
-        """HITL #1 edit: the Planning crew rewrites the spec with the user's changes."""
-        yield {review: gr.Column(visible=False)}
-        s = yield from run(intake.revise_spec, s.chat_id, request)
-        yield show(s)
+        def new_project() -> dict:
+            return {**show("intake"), **intake.reset(), chat_id: ""}
 
-    def approve_spec(s: IntakeState, site_spec: str):
-        """HITL #1 approve: the flow saves the spec, then the Design crew designs the site from it."""
-        s = intake.approve_spec(s.chat_id, site_spec)
-        if s.problems:
-            yield show(s)
-            return
-        yield {state: s, status: f"### Spec approved\nSaved to {SITE_SPEC.as_posix()}.\n\n_The Design crew is designing "
-                                 "your site. This takes a few minutes..._",
-               spec: gr.Code(interactive=False), actions: gr.Column(visible=False)}
-        try:
-            _, approved = run_design_phase(SITE_SPEC.read_text(encoding="utf-8"))
-        except Exception as e:
-            yield {status: f"**The design failed** ({e}). Approve again to retry.",
-                   spec: gr.Code(interactive=True), actions: gr.Column(visible=True)}
-            return
-        note = "The Design Critic approved it." if approved else "The Design Critic still had fixes after 3 rounds, so check it carefully."
-        yield {status: f"### Your design is ready\n{note} Saved to {DESIGN_DIR.as_posix()}/."}
+        def open_selected(evt: gr.SelectData) -> dict:
+            return open_project(projects.selected_id(evt))
 
-    outputs = [state, intake_form, interview, question_tabs, status, review, spec, changes, actions,
-               *tabs, *radios, *others]
-    start.click(begin, [description, audience, look_and_feel, qualities, api_base_url, endpoints], outputs)
-    submit.click(answer, [state, *radios, *others], outputs)
-    revise.click(request_changes, [state, changes], outputs)
-    approve.click(approve_spec, [state, spec], outputs)
-    for radio, other in zip(radios, others):
-        radio.change(lambda choice: gr.Textbox(visible=choice == OTHER), radio, other)
+        def refresh(cid: str, last: str) -> dict:
+            """Timer tick: redraws the panels only when something changed."""
+            if not cid:
+                return unchanged(panel_outputs)
+            update = panels(cid)
+            return unchanged(panel_outputs) if update[seen] == last else update
+
+        demo.load(open_project, chat_id, everything)
+        all_projects.click(lambda: open_project(""), None, everything)
+        projects.new.click(new_project, None, everything)
+        projects.table.select(open_selected, None, everything)
+        intake.approved.then(open_designed, chat_id, everything)
+        chat.sent.then(panels, chat_id, panel_outputs)
+        timer.tick(refresh, [chat_id, seen], panel_outputs, show_progress="hidden")
+    return demo
+
+
+def unchanged(components: list) -> dict:
+    """An update that leaves every component as it is (Gradio needs a value per output)."""
+    return {component: gr.skip() for component in components}
 
 
 def main():
-    load_dotenv()
-    demo.launch()
+    """Launch the UI. main.run loads .env before calling this."""
+    build_app().queue(default_concurrency_limit=None).launch(allowed_paths=[str(PROJECTS.resolve())], css=CSS)
 
 
 if __name__ == "__main__":

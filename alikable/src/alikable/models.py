@@ -7,7 +7,7 @@ from __future__ import annotations   # lets a model use one defined further down
 
 import uuid
 from datetime import datetime, timezone
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -60,6 +60,11 @@ class Interview(BaseModel):
 
 
 IntakeStage = Literal["form", "interview", "review", "approved"]
+# The approval step waiting for the user: HITL #1, #2 and #3 in Documents/Agent_Diagram.png
+Gate = Literal["spec", "design", "build"]
+# Where a project is, from the intake form to the deploy guide (flows/project.py)
+Stage = Literal["form", "interview", "spec_review", "designing", "design_review",
+                "building", "build_review", "deploying", "deployed"]
 
 
 class IntakeState(BaseModel):
@@ -360,27 +365,56 @@ class PipelineState(BaseModel):
     notes: list[str] = []       # one line per crew, becomes the job result
 
 
+JobKind = Literal["check", "design", "change", "deploy", "rollback"]
+# interrupted: the app stopped while it was queued or running; Retry starts it again
+JobStatus = Literal["queued", "running", "done", "failed", "interrupted"]
+
+
 class Job(BaseModel):
     """One background job, as the UI shows it."""
 
     id: str = Field(default_factory=lambda: uuid.uuid4().hex[:8])
-    kind: Literal["check", "change", "deploy", "rollback"]
+    kind: JobKind
     title: str
-    status: Literal["queued", "running", "done", "failed"] = "queued"
+    status: JobStatus = "queued"
     step: str = ""      # what is running right now, e.g. "design crew"
     result: str = ""
     error: str = ""
+    params: dict[str, Any] = {}   # what started it, so Retry can start it again
     created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(default_factory=utc_now)
 
+    @property
+    def is_open(self) -> bool:
+        return self.status in ("queued", "running")
 
-class ChatResponse(BaseModel):
-    """Everything the UI needs after a message or a status refresh."""
 
-    chat_id: str        # made at the intake form; also the chat's memory scope
-    reply: str = ""
-    awaiting_approval: bool = False
+# ---------------------------------------------------------------------- Project
+# One project from the intake form to the deploy guide (flows/project.py).
+
+class ProjectView(BaseModel):
+    """Everything the UI shows for one project, after an action or a status refresh."""
+
+    chat_id: str        # made at the intake form; names the project folder and the chat's memory scope
+    title: str = "Untitled"
+    stage: Stage = "form"
+    awaiting: Gate | None = None
+    intake: IntakeState = IntakeState()
+    reply: str = ""                       # the Chat Agent's answer to the message just sent
+    messages: list[dict[str, str]] = []   # the chat so far as {role, content}, oldest first
     jobs: list[Job] = []
+    problems: list[str] = []              # why the last action was refused; nothing changed
+
+
+class SessionRecord(BaseModel):
+    """What the project's session.json keeps between app runs."""
+
+    stage: Stage                # for the project picker; recomputed on load
+    awaiting: Gate | None = None
+    intake: IntakeState         # without what the user typed before the input guardrail
+    history: list[str] = []     # the chat, as "User: ..." and "Assistant: ..." lines
+    jobs: list[Job] = []
+    updated_at: datetime = Field(default_factory=utc_now)
 
 
 # ------------------------------------------------------------------- Site files
