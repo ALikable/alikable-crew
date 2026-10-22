@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Alikable Agent Flow (Current)</title>
+<style>
+  body { margin: 0; background: #fff; font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
+  .wrap { max-width: 1300px; margin: 0 auto; padding: 24px 16px; }
+  svg { width: 100%; height: auto; display: block; }
+  .h1 { font-size: 21px; font-weight: 600; fill: #111; }
+  .band { fill: #F4F6FA; stroke: #C9D3E3; stroke-width: 1.2; }
+  .chat { fill: #E3EDF9; stroke: #2F6FD6; stroke-width: 1.6; }
+  .crew { fill: #ECECEA; stroke: #D3D3CF; stroke-width: 1.2; }
+  .agent { fill: #EFEFED; stroke: #C6C6C1; stroke-width: 1.2; }
+  .io { fill: #fff; stroke: #C6C6C1; stroke-width: 1.4; }
+  .guard { fill: #FDF3DC; stroke: #F2B530; stroke-width: 1.4; }
+  .guard-in { fill: #F3EBD9; stroke: #F2B530; stroke-width: 1.4; }
+  .hitl { fill: #E3EDF9; stroke: #2F6FD6; stroke-width: 2; }
+  .router { fill: #fff; stroke: #2F6FD6; stroke-width: 1.8; }
+  .tool { fill: #fff; stroke: #9C9C97; stroke-width: 1.2; stroke-dasharray: 5 4; }
+  .mcp { fill: #EAF6EE; stroke: #2E9D5B; stroke-width: 1.4; stroke-dasharray: 5 4; }
+  .flow { stroke: #BDBDB8; stroke-width: 1.6; fill: none; }
+  .link { stroke: #9C9C97; stroke-width: 1.2; fill: none; stroke-dasharray: 3 3; }
+  .loop { stroke: #2F6FD6; stroke-width: 1.6; fill: none; stroke-dasharray: 6 5; }
+  .ckpt { fill: #fff; stroke: #6E6E69; stroke-width: 1.6; }
+  .t-crew { font-size: 17px; font-weight: 600; fill: #1a1a1a; }
+  .t-tag { font-size: 13px; fill: #777; }
+  .t-name { font-size: 15.5px; font-weight: 600; fill: #1a1a1a; text-anchor: middle; }
+  .t-sub { font-size: 13.5px; fill: #555; text-anchor: middle; }
+  .t-uses { font-size: 13.5px; fill: #555; }
+  .t-lbl { font-size: 13px; fill: #555; }
+  .t-blue { font-size: 13px; fill: #2F6FD6; }
+  .t-key { font-size: 14px; fill: #333; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<svg viewBox="0 0 1280 1552" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Alikable agent flow as built: an intake flow with an interview crew and planning crew, then background jobs for design, implementation with a code review loop (read-only MCP Filesystem), polish, and deploy guide, three approval gates, a project chat whose Chat Agent sends changes to the Change Router, and the Build Checker and Release Builder tools">
+  <defs>
+    <marker id="ag" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#BDBDB8"/>
+    </marker>
+    <marker id="ab" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#2F6FD6"/>
+    </marker>
+    <marker id="at" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#9C9C97"/>
+    </marker>
+    <!-- user touchpoint badge -->
+    <symbol id="user" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="11.5" fill="#2F6FD6"/>
+      <circle cx="12" cy="9" r="3.6" fill="#fff"/>
+      <path d="M5.6 18.6 C6.6 14.8 9 13.6 12 13.6 C15 13.6 17.4 14.8 18.4 18.6 Z" fill="#fff"/>
+    </symbol>
+  </defs>
+
+  <text class="h1" x="24" y="38">Alikable as built: CrewAI Flows plan, design, build and polish a front end, then hand the user a deploy guide</text>
+
+  <!-- Flow band -->
+  <rect class="band" x="24" y="58" width="1236" height="44" rx="8"/>
+  <text class="t-uses" x="42" y="85"><tspan style="font-weight:600;fill:#1a1a1a">CrewAI Flows</tspan>  IntakeFlow · ChangePipelineFlow · PolishFlow · DeployGuideFlow · ChatFlow  ·  state = project folder output/projects/&lt;chat_id&gt;/  ·  Gradio UI</text>
+
+  <!-- User bar -->
+  <rect class="chat" x="24" y="124" width="48" height="1176" rx="24"/>
+  <use href="#user" x="36" y="136" width="24" height="24"/>
+  <text class="t-blue" transform="translate(53 712) rotate(-90)" text-anchor="middle" style="font-size:14px"><tspan style="font-weight:600">User</tspan>  ·  intake screen until HITL #1, then the project chat  ·  steers any crew with a person badge</text>
+
+  <!-- ================= LEFT COLUMN: IntakeFlow, then the design job ================= -->
+
+  <!-- Intake form -->
+  <rect class="io" x="140" y="124" width="480" height="64" rx="10"/>
+  <text class="t-name" x="380" y="151">Intake form</text>
+  <text class="t-sub" x="380" y="173">description · audience · look · API URL + endpoints · not an agent</text>
+  <line class="flow" x1="380" y1="188" x2="380" y2="206" marker-end="url(#ag)"/>
+
+  <!-- Input guardrail -->
+  <rect class="guard" x="140" y="208" width="480" height="54" rx="8"/>
+  <text class="t-name" x="380" y="231">Input guardrail (Python)</text>
+  <text class="t-sub" x="380" y="252">HTML/CSS/JS only · no backend work · secrets redacted</text>
+  <line class="flow" x1="380" y1="262" x2="380" y2="294" marker-end="url(#ag)"/>
+  <text class="t-lbl" x="392" y="283">IntakeForm · project folder made</text>
+
+  <!-- Interview crew -->
+  <rect class="crew" x="140" y="296" width="480" height="152" rx="10"/>
+  <text class="t-crew" x="160" y="324">Interview crew</text>
+  <text class="t-tag" x="284" y="324">· one round per user action</text>
+  <use href="#user" x="588" y="306" width="22" height="22"/>
+
+  <rect class="agent" x="160" y="342" width="210" height="62" rx="8"/>
+  <text class="t-name" x="265" y="367">Discovery Interviewer</text>
+  <text class="t-sub" x="265" y="389">≤4 questions, with options</text>
+  <line class="flow" x1="370" y1="362" x2="388" y2="362" marker-end="url(#ag)"/>
+  <line class="flow" x1="390" y1="386" x2="372" y2="386" marker-end="url(#ag)"/>
+  <rect class="io" x="390" y="342" width="210" height="62" rx="8"/>
+  <text class="t-name" x="495" y="367">User answers</text>
+  <text class="t-sub" x="495" y="389">pick one, or blank = default</text>
+
+  <text class="t-uses" x="160" y="432">uses: design practices · saves form + answers to memory</text>
+  <line class="flow" x1="380" y1="448" x2="380" y2="480" marker-end="url(#ag)"/>
+  <text class="t-lbl" x="392" y="469">interview summary</text>
+
+  <!-- Planning crew -->
+  <rect class="crew" x="140" y="482" width="480" height="236" rx="10"/>
+  <text class="t-crew" x="160" y="510">Planning crew</text>
+  <text class="t-tag" x="280" y="510">· sequential · writes the spec draft</text>
+  <use href="#user" x="588" y="492" width="22" height="22"/>
+
+  <rect class="agent" x="160" y="528" width="210" height="62" rx="8"/>
+  <text class="t-name" x="265" y="553">Spec Writer</text>
+  <text class="t-sub" x="265" y="575">pages · features · plan</text>
+  <line class="flow" x1="370" y1="559" x2="388" y2="559" marker-end="url(#ag)"/>
+  <rect class="agent" x="390" y="528" width="210" height="62" rx="8"/>
+  <text class="t-name" x="495" y="553">Copywriter</text>
+  <text class="t-sub" x="495" y="575">full spec with copy</text>
+  <line class="flow" x1="495" y1="590" x2="495" y2="610" marker-end="url(#ag)"/>
+
+  <rect class="agent" x="390" y="612" width="210" height="62" rx="8"/>
+  <text class="t-name" x="495" y="637">Spec Critic</text>
+  <text class="t-sub" x="495" y="659">APPROVED or fixes</text>
+  <polyline class="flow" points="390,643 265,643 265,592" marker-end="url(#ag)"/>
+
+  <text class="t-uses" x="160" y="702">uses: knowledge (design practices, Spec Critic only)</text>
+  <line class="flow" x1="380" y1="718" x2="380" y2="750" marker-end="url(#ag)"/>
+  <circle class="ckpt" cx="380" cy="732" r="5"/>
+  <text class="t-lbl" x="394" y="739">site_spec_draft.json</text>
+
+  <!-- HITL #1 -->
+  <polygon class="hitl" points="380,752 520,790 380,828 240,790"/>
+  <text class="t-name" x="380" y="786">HITL #1</text>
+  <text class="t-sub" x="380" y="807">approve (JSON editable)</text>
+  <polyline class="loop" points="240,790 116,790 116,576 138,576" marker-end="url(#ab)"/>
+  <text class="t-blue" x="124" y="782">changes → replan</text>
+  <line class="flow" x1="380" y1="828" x2="380" y2="860" marker-end="url(#ag)"/>
+  <circle class="ckpt" cx="380" cy="844" r="5"/>
+  <text class="t-lbl" x="394" y="851">site_spec.json · chat opens · design job</text>
+
+  <!-- Design crew -->
+  <rect class="crew" x="140" y="862" width="480" height="194" rx="10"/>
+  <text class="t-crew" x="160" y="890">Design crew</text>
+  <text class="t-tag" x="263" y="890">· writer / critic pair · design job</text>
+  <use href="#user" x="588" y="872" width="22" height="22"/>
+
+  <rect class="agent" x="160" y="908" width="210" height="44" rx="8"/>
+  <text class="t-name" x="265" y="935">Design System Designer</text>
+  <line class="flow" x1="370" y1="930" x2="388" y2="930" marker-end="url(#ag)"/>
+  <rect class="agent" x="390" y="908" width="210" height="44" rx="8"/>
+  <text class="t-name" x="495" y="935">Design Critic</text>
+  <polyline class="flow" points="495,952 495,966 265,966 265,954" marker-end="url(#ag)"/>
+
+  <text class="t-uses" x="160" y="992">uses: knowledge (design templates) · GPT-5.6 Luna</text>
+  <rect class="guard-in" x="160" y="1004" width="440" height="36" rx="8"/>
+  <text class="t-sub" x="380" y="1027" style="fill:#333">Task guardrail (LLM): valid CSS, every page has a layout</text>
+  <line class="flow" x1="380" y1="1056" x2="380" y2="1088" marker-end="url(#ag)"/>
+  <circle class="ckpt" cx="380" cy="1070" r="5"/>
+  <text class="t-lbl" x="394" y="1077">design.json + design/ files</text>
+
+  <!-- HITL #2 -->
+  <polygon class="hitl" points="380,1090 520,1128 380,1166 240,1128"/>
+  <text class="t-name" x="380" y="1124">HITL #2</text>
+  <text class="t-sub" x="380" y="1145">approve (CSS editable)</text>
+  <polyline class="loop" points="240,1128 116,1128 116,940 138,940" marker-end="url(#ab)"/>
+  <text class="t-blue" x="124" y="1120">revise → design job</text>
+  <polyline class="flow" points="520,1128 665,1128 665,155 718,155" marker-end="url(#ag)"/>
+  <text class="t-lbl" x="532" y="1120">approve</text>
+  <text class="t-lbl" x="532" y="1146">first build job</text>
+
+  <!-- ================= RIGHT COLUMN: change job, then deploy job ================= -->
+
+  <!-- Implementation crew + Code Review crew -->
+  <rect class="crew" x="720" y="124" width="480" height="284" rx="10"/>
+  <text class="t-crew" x="740" y="152">Implementation crew</text>
+  <text class="t-tag" x="910" y="152">· then Code Review crew</text>
+  <use href="#user" x="1168" y="134" width="22" height="22"/>
+
+  <rect class="agent" x="740" y="170" width="210" height="62" rx="8"/>
+  <text class="t-name" x="845" y="195">API Integrator</text>
+  <text class="t-sub" x="845" y="217">config · mock-data · api.js</text>
+  <line class="flow" x1="950" y1="201" x2="968" y2="201" marker-end="url(#ag)"/>
+  <rect class="agent" x="970" y="170" width="210" height="62" rx="8"/>
+  <text class="t-name" x="1075" y="195">Page Builder</text>
+  <text class="t-sub" x="1075" y="217">one agent · every page + its JS</text>
+  <line class="flow" x1="1045" y1="232" x2="1045" y2="252" marker-end="url(#ag)"/>
+  <line class="flow" x1="1105" y1="254" x2="1105" y2="234" marker-end="url(#ag)"/>
+
+  <rect class="mcp" x="740" y="254" width="210" height="62" rx="8"/>
+  <text class="t-name" x="845" y="279">MCP Filesystem</text>
+  <text class="t-sub" x="845" y="301">read-only · list + read site/</text>
+  <line class="link" x1="950" y1="285" x2="968" y2="285" marker-end="url(#at)"/>
+  <rect class="agent" x="970" y="254" width="210" height="62" rx="8"/>
+  <text class="t-name" x="1075" y="279">Code Reviewer</text>
+  <text class="t-sub" x="1075" y="301">5 checks · FAIL quotes rule</text>
+
+  <text class="t-uses" x="740" y="344">uses: Build Checker (Code Reviewer) · GPT-5.6 Luna</text>
+  <rect class="guard-in" x="740" y="356" width="440" height="36" rx="8"/>
+  <text class="t-sub" x="960" y="379" style="fill:#333">File guardrail (Python): writes only inside site/ · styles.css locked</text>
+  <line class="flow" x1="960" y1="408" x2="960" y2="440" marker-end="url(#ag)"/>
+  <circle class="ckpt" cx="960" cy="422" r="5"/>
+  <text class="t-lbl" x="974" y="429">site/ build</text>
+
+  <!-- Polish & Iterate crew -->
+  <rect class="crew" x="720" y="442" width="480" height="236" rx="10"/>
+  <text class="t-crew" x="740" y="470">Polish &amp; Iterate crew</text>
+  <text class="t-tag" x="916" y="470">· QA + audit run in parallel</text>
+  <use href="#user" x="1168" y="452" width="22" height="22"/>
+
+  <rect class="agent" x="740" y="488" width="210" height="62" rx="8"/>
+  <text class="t-name" x="845" y="513">QA Tester</text>
+  <text class="t-sub" x="845" y="535">reads files · no browser</text>
+  <rect class="agent" x="970" y="488" width="210" height="62" rx="8"/>
+  <text class="t-name" x="1075" y="513">Consistency Auditor</text>
+  <text class="t-sub" x="1075" y="535">drift vs spec + design</text>
+  <line class="flow" x1="870" y1="550" x2="870" y2="570" marker-end="url(#ag)"/>
+  <line class="flow" x1="1050" y1="550" x2="1050" y2="570" marker-end="url(#ag)"/>
+  <rect class="agent" x="840" y="572" width="240" height="62" rx="8"/>
+  <text class="t-name" x="960" y="597">Fixer</text>
+  <text class="t-sub" x="960" y="619">one issue at a time, high first</text>
+  <polyline class="flow" points="840,603 770,603 770,552" marker-end="url(#ag)"/>
+
+  <text class="t-uses" x="740" y="662">uses: Build Checker after every fix · breaking fixes rolled back</text>
+  <line class="flow" x1="960" y1="678" x2="960" y2="710" marker-end="url(#ag)"/>
+  <circle class="ckpt" cx="960" cy="692" r="5"/>
+  <text class="t-lbl" x="974" y="699">polish_report.json</text>
+
+  <!-- HITL #3 -->
+  <polygon class="hitl" points="960,712 1100,750 960,788 820,750"/>
+  <text class="t-name" x="960" y="746">HITL #3</text>
+  <text class="t-sub" x="960" y="767">approve or reject</text>
+  <polyline class="loop" points="1100,750 1240,750 1240,140 1202,140" marker-end="url(#ab)"/>
+  <text class="t-blue" x="1112" y="742">reject</text>
+  <text class="t-blue" transform="translate(1254 445) rotate(-90)" text-anchor="middle">restore checkpoint · or build again if none approved yet</text>
+  <line class="flow" x1="960" y1="788" x2="960" y2="820" marker-end="url(#ag)"/>
+  <text class="t-lbl" x="972" y="809">approve · host + detail</text>
+
+  <!-- Deploy Guide crew -->
+  <rect class="crew" x="720" y="822" width="480" height="182" rx="10"/>
+  <text class="t-crew" x="740" y="850">Deploy Guide crew</text>
+  <text class="t-tag" x="895" y="850">· deploy job · checkpoint cleared</text>
+  <use href="#user" x="1168" y="832" width="22" height="22"/>
+
+  <rect class="agent" x="840" y="868" width="240" height="44" rx="8"/>
+  <text class="t-name" x="960" y="895">Deploy Guide Writer</text>
+
+  <text class="t-uses" x="740" y="940">uses: Release Builder · deploy_guides.txt · polish report</text>
+  <rect class="guard-in" x="740" y="952" width="440" height="36" rx="8"/>
+  <text class="t-sub" x="960" y="975" style="fill:#333">Output guardrail: headings · no secrets · real files only</text>
+  <line class="flow" x1="960" y1="1004" x2="960" y2="1036" marker-end="url(#ag)"/>
+  <circle class="ckpt" cx="960" cy="1018" r="5"/>
+  <text class="t-lbl" x="974" y="1025">site.zip (with DEPLOY.md)</text>
+
+  <!-- Final output -->
+  <rect class="io" x="720" y="1038" width="480" height="70" rx="35"/>
+  <text class="t-name" x="960" y="1066">User downloads site.zip + DEPLOY.md</text>
+  <text class="t-sub" x="960" y="1089">user deploys it · next change goes through the chat</text>
+
+  <!-- ================= BOTTOM: project chat ================= -->
+
+  <!-- Change Router reroutes -->
+  <polyline class="loop" points="560,1230 560,1198 96,1198 96,542 138,542" marker-end="url(#ab)"/>
+  <polyline class="loop" points="96,916 138,916" marker-end="url(#ab)"/>
+  <text class="t-blue" x="106" y="1192">new page/feature → Planning · style → Design</text>
+  <polyline class="loop" points="740,1230 740,1198 690,1198 690,201 718,201" marker-end="url(#ab)"/>
+  <polyline class="loop" points="690,519 718,519" marker-end="url(#ab)"/>
+  <text class="t-blue" x="752" y="1192">code → Implementation · small fix → Polish</text>
+
+  <!-- Chat Agent -->
+  <rect class="chat" x="140" y="1230" width="280" height="70" rx="10"/>
+  <text class="t-name" x="280" y="1257">Chat Agent</text>
+  <text class="t-sub" x="280" y="1280">reply · change · approve · reject</text>
+  <use href="#user" x="390" y="1236" width="22" height="22"/>
+  <line class="loop" x1="72" y1="1265" x2="138" y2="1265" marker-end="url(#ab)"/>
+  <text class="t-blue" x="80" y="1257">message</text>
+  <line class="flow" x1="420" y1="1265" x2="478" y2="1265" marker-end="url(#ag)"/>
+  <text class="t-lbl" x="424" y="1257">change</text>
+
+  <!-- Change Router -->
+  <polygon class="router" points="480,1265 510,1230 770,1230 800,1265 770,1300 510,1300"/>
+  <text class="t-name" x="640" y="1261">Change Router</text>
+  <text class="t-sub" x="640" y="1283">where rework starts · or ask 1 question</text>
+  <line class="flow" x1="800" y1="1265" x2="838" y2="1265" marker-end="url(#ag)"/>
+
+  <!-- Change job -->
+  <rect class="io" x="840" y="1230" width="360" height="70" rx="10"/>
+  <text class="t-name" x="1020" y="1257">Change job</text>
+  <text class="t-sub" x="1020" y="1280">checkpoint → routed crew onward → HITL #3</text>
+
+  <!-- ================= FOOTER ================= -->
+
+  <!-- Tools -->
+  <rect class="tool" x="140" y="1332" width="480" height="64" rx="10"/>
+  <text class="t-name" x="380" y="1359">Build Checker (tool)</text>
+  <text class="t-sub" x="380" y="1381">used by Code Reviewer, QA Tester and polish · CDNs · secrets</text>
+  <rect class="tool" x="720" y="1332" width="480" height="64" rx="10"/>
+  <text class="t-name" x="960" y="1359">Release Builder (tool)</text>
+  <text class="t-sub" x="960" y="1381">used by Deploy Guide Writer · zip + localhost smoke test</text>
+
+  <!-- Key -->
+  <text class="t-key" x="140" y="1436" style="font-weight:600;fill:#555">Key</text>
+  <rect class="guard" x="142" y="1450" width="30" height="18" rx="6"/>
+  <text class="t-key" x="186" y="1464">Guardrail</text>
+  <polygon class="hitl" points="157,1481 172,1491 157,1501 142,1491"/>
+  <text class="t-key" x="186" y="1496">Approval gate (blocks the job)</text>
+  <use href="#user" x="146" y="1514" width="22" height="22"/>
+  <text class="t-key" x="186" y="1530">User touchpoint</text>
+
+  <line class="loop" x1="470" y1="1459" x2="500" y2="1459"/>
+  <text class="t-key" x="514" y="1464">Loop back / reroute</text>
+  <rect class="tool" x="470" y="1482" width="30" height="18" rx="6"/>
+  <text class="t-key" x="514" y="1496">Tool</text>
+  <rect class="mcp" x="470" y="1514" width="30" height="18" rx="6"/>
+  <text class="t-key" x="514" y="1528">MCP server</text>
+
+  <rect class="io" x="800" y="1450" width="30" height="18" rx="6"/>
+  <text class="t-key" x="844" y="1464">Input, output or job</text>
+  <circle class="ckpt" cx="815" cy="1491" r="5"/>
+  <text class="t-key" x="844" y="1496">Output saved</text>
+</svg>
+</div>
+</body>
+</html>
