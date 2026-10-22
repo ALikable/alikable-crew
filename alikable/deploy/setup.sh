@@ -1,25 +1,24 @@
 #!/usr/bin/env bash
 # One-time setup of Alikable on a fresh Ubuntu 24.04 EC2 instance.
 #
-#   sudo git clone <your repo URL> /opt/alikable-crew
-#   sudo /opt/alikable-crew/alikable/deploy/setup.sh your.domain.com
+#   deploy/push.sh <ip> <ssh key>     (from your laptop: copies the code to the server)
+#   ssh ubuntu@<ip> sudo /opt/alikable-crew/alikable/deploy/setup.sh
 #
 # Installs Node.js 22, Caddy and uv, creates the alikable user, installs the Python
-# dependencies, and starts the app behind Caddy with HTTPS for the domain. Safe to run again.
+# dependencies, and starts the app behind Caddy on port 80. Safe to run again.
 set -euo pipefail
 
-DOMAIN="${1:?usage: setup.sh <domain>}"
 REPO=/opt/alikable-crew
 APP="$REPO/alikable"
 APP_USER=alikable
 HERE="$(cd "$(dirname "$0")" && pwd)"
 
 [[ $EUID -eq 0 ]] || { echo "Run with sudo." >&2; exit 1; }
-[[ "$HERE" == "$APP/deploy" ]] || { echo "Clone the repo to $REPO first (found the script in $HERE)." >&2; exit 1; }
+[[ "$HERE" == "$APP/deploy" ]] || { echo "Copy the code to $APP first (found the script in $HERE)." >&2; exit 1; }
 
 echo "== System packages"
 apt-get update
-apt-get install -y curl git ca-certificates gnupg debian-keyring debian-archive-keyring apt-transport-https
+apt-get install -y curl rsync ca-certificates gnupg debian-keyring debian-archive-keyring apt-transport-https
 
 echo "== Node.js 22 (the Code Reviewer's filesystem MCP runs with npx; the build checker uses node --check)"
 if ! command -v node >/dev/null || [[ "$(node -v)" != v22* ]]; then
@@ -40,7 +39,6 @@ fi
 echo "== App user and files"
 id "$APP_USER" >/dev/null 2>&1 || useradd --create-home --shell /bin/bash "$APP_USER"
 chown -R "$APP_USER:$APP_USER" "$REPO"
-git config --system --add safe.directory "$REPO"
 
 echo "== uv and Python dependencies"
 sudo -u "$APP_USER" -H bash -c 'command -v ~/.local/bin/uv >/dev/null || curl -LsSf https://astral.sh/uv/install.sh | sh'
@@ -59,8 +57,8 @@ cp "$HERE/alikable.service" /etc/systemd/system/alikable.service
 systemctl daemon-reload
 systemctl enable alikable
 
-echo "== Caddy site for $DOMAIN"
-sed "s/alikable.example.com/$DOMAIN/" "$HERE/Caddyfile" > /etc/caddy/Caddyfile
+echo "== Caddy on port 80"
+cp "$HERE/Caddyfile" /etc/caddy/Caddyfile
 systemctl reload caddy || systemctl restart caddy
 
 if [[ -n "${NEW_ENV:-}" ]]; then
@@ -74,5 +72,5 @@ EOF
 else
   systemctl restart alikable
   echo
-  echo "Running. Open https://$DOMAIN   (logs: journalctl -u alikable -f)"
+  echo "Running on port 80 of this instance's public IP   (logs: journalctl -u alikable -f)"
 fi
