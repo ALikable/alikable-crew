@@ -6,7 +6,7 @@ together. Each screen draws itself (ui/*.py); this file decides which one shows.
         └--select a project--> the screen for its stage (ui/navigation.screen_for)
 
 The build screen has the chat, the build gate and the deploy files on the left, and
-the jobs and the site's pages, to open in the browser, on the right.
+the jobs and the site's pages, to open in a new tab, on the right.
 
 The open project's chat_id is kept in the browser, so reloading the page reopens it.
 While the design or build screen shows, a timer polls the project every 2 seconds and
@@ -15,6 +15,8 @@ screen (by an action in another tab), it opens that screen.
 
 Run from the project root: uv run ui (main.run loads .env first)
 """
+
+import os
 
 import gradio as gr
 
@@ -137,8 +139,21 @@ def unchanged(components: list) -> dict:
 
 
 def main():
-    """Launch the UI. main.run loads .env before calling this."""
-    build_app().queue(default_concurrency_limit=None).launch(allowed_paths=[str(PROJECTS.resolve())], css=CSS)
+    """
+    Launch the UI. main.run loads .env before calling this.
+
+    ALIKABLE_HOST and ALIKABLE_PORT set where it listens (127.0.0.1:7860 by default; on a
+    server, keep 127.0.0.1 behind the reverse proxy). With ALIKABLE_USER and ALIKABLE_PASSWORD
+    set, every page and served file asks for that login first.
+    """
+    user, password = os.getenv("ALIKABLE_USER"), os.getenv("ALIKABLE_PASSWORD")
+    build_app().queue(default_concurrency_limit=None).launch(
+        server_name=os.getenv("ALIKABLE_HOST", "127.0.0.1"),
+        server_port=int(os.getenv("ALIKABLE_PORT", "7860")),
+        auth=(user, password) if user and password else None,
+        allowed_paths=[str(PROJECTS.resolve())],
+        css=CSS,
+    )
 
 
 if __name__ == "__main__":

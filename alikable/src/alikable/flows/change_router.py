@@ -51,6 +51,7 @@ from alikable.flows.intake import run_planning_phase, save_site_spec
 from alikable.flows.jobs import Jobs
 from alikable.flows.phases import run_design_phase, run_implementation_phase
 from alikable.flows.polish import run_polish_phase
+from alikable.guardrails import CHAT_BLOCKED, check_chat_message
 from alikable.models import HOST_NAMES, ChatReply, ChatState, Gate, Job, PipelineState, RouteDecision
 from alikable.projects import Project
 from alikable.site_files import clear_checkpoint, restore_checkpoint, save_checkpoint
@@ -298,17 +299,27 @@ class ChatFlow(Flow[ChatState]):
     @start()
     def chat(self):
         session: ChatSession = self._session
-        result = Alikable(session.project).chat_crew(session.id).kickoff(inputs={
-            "message": self.state.message,
-            "history": "\n".join(self.state.history[-HISTORY_LIMIT:]) or "None",
-            "site_spec": _read(session.project.site_spec) or "None yet",
-            "awaiting_approval": "yes" if session.awaiting == "build" else "no",
-            "jobs": session.jobs.for_chat(),
-        })
+        # Input guardrail: secrets and private information never reach the Chat Agent,
+        # its memory, the chat history or session.json.
+        self.state.message, warnings = check_chat_message(self.state.message)
+        try:
+            result = Alikable(session.project).chat_crew(session.id).kickoff(inputs={
+                "message": self.state.message,
+                "history": "\n".join(self.state.history[-HISTORY_LIMIT:]) or "None",
+                "site_spec": _read(session.project.site_spec) or "None yet",
+                "awaiting_approval": "yes" if session.awaiting == "build" else "no",
+                "jobs": session.jobs.for_chat(),
+            })
+        except Exception as e:
+            if not str(e).startswith("Task failed guardrail"):
+                raise
+            result = None                         # still off topic after the retries
 
-        decision = result.pydantic
+        decision = result.pydantic if result else ChatReply(action="reply", message=CHAT_BLOCKED)
         if not isinstance(decision, ChatReply):   # unstructured answer: treat it as a reply
             decision = ChatReply(action="reply", message=result.raw)
+        if warnings:
+            decision.message = "\n\n".join([*warnings, decision.message])
         if decision.action in ("approve", "reject") and session.awaiting != "build":
             decision.action = "reply"             # nothing is waiting for approval
 

@@ -1,0 +1,30 @@
+# systemd unit for the Alikable UI. setup.sh installs it as /etc/systemd/system/alikable.service.
+# The app reads .env from its working directory (main.run calls load_dotenv), so there is
+# no EnvironmentFile here: .env stays the one place for keys and settings.
+
+[Unit]
+Description=Alikable (CrewAI + Gradio UI)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=alikable
+Group=alikable
+# output/projects and output/memory are relative paths: the app must start here
+WorkingDirectory=/opt/alikable-crew/alikable
+ExecStart=/opt/alikable-crew/alikable/.venv/bin/ui
+# npx (the Code Reviewer's filesystem MCP) needs a home for its cache
+Environment=HOME=/home/alikable
+Environment=PYTHONUNBUFFERED=1
+Restart=always
+RestartSec=5
+# Crews can run for minutes; give a stop time to finish writing files before the kill
+TimeoutStopSec=30
+
+NoNewPrivileges=true
+ProtectSystem=full
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

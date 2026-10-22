@@ -1,0 +1,12 @@
+# Caddy reverse proxy for Alikable. setup.sh copies this to /etc/caddy/Caddyfile with
+# alikable.example.com replaced by your domain; Caddy then gets and renews the HTTPS
+# certificate itself. The domain's DNS A record must point at the instance's Elastic IP,
+# and ports 80 and 443 must be open in the security group.
+#
+# reverse_proxy passes WebSockets through and flushes Server-Sent Events, which Gradio's
+# queue and live panels need. The app itself listens on 127.0.0.1:7860 only.
+
+alikable.example.com {
+	encode gzip
+	reverse_proxy 127.0.0.1:7860
+}

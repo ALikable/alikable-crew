@@ -6,6 +6,7 @@ from crewai.project import CrewBase, agent, crew, task
 from crewai.agents.agent_builder.base_agent import BaseAgent
 from crewai.knowledge.source.text_file_knowledge_source import TextFileKnowledgeSource
 from crewai.memory import Memory, MemoryScope, MemorySlice
+from alikable.guardrails import CHAT_TOPIC, chat_reply_guardrail
 from alikable.models import AuditReport, ChatReply, DesignSystem, FixResult, Interview, QAReport, RouteDecision, SiteBuild
 from alikable.projects import Project
 from alikable.tools.build_checker import BuildCheckerTool
@@ -284,6 +285,10 @@ class Alikable():
         return Task(
             config=self.tasks_config['chat_task'], # type: ignore[index]
             output_pydantic=ChatReply,
+            # The topic check retries the Chat Agent, so it runs first; the redaction
+            # never fails, so running it last cleans every retry too.
+            guardrails=[CHAT_TOPIC, chat_reply_guardrail],
+            guardrail_max_retries=2,
         )
 
     # ------------------------------------------------------------------ Crews

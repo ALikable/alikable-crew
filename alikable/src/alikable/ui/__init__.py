@@ -8,7 +8,7 @@ The screens of the Alikable UI, one module each (Step B2 in Documents/PLAN.md).
   chat.py        the project's chat with the Chat Agent
   build.py       the build gate (HITL #3) and the jobs panel, with job details and Retry
   deploy.py      DEPLOY.md and the downloads for site.zip and DEPLOY.md
-  preview.py     serving the project folders, and the iframe previews of a design or build
+  preview.py     a page picker and a link that opens a design or build page in a new tab
 
 Each screen makes its components inside the shared gr.Blocks and has a render method
 that returns the updates for one project. Every action goes through flows/project.py
