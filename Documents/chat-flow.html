@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Alikable Chat Flow</title>
+<style>
+  body { margin: 0; background: #fff; font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
+  .wrap { max-width: 1300px; margin: 0 auto; padding: 24px 16px; }
+  svg { width: 100%; height: auto; display: block; }
+  .h1 { font-size: 21px; font-weight: 600; fill: #111; }
+  .band { fill: #F4F6FA; stroke: #C9D3E3; stroke-width: 1.2; }
+  .chat { fill: #E3EDF9; stroke: #2F6FD6; stroke-width: 1.6; }
+  .crew { fill: #ECECEA; stroke: #D3D3CF; stroke-width: 1.2; }
+  .agent { fill: #EFEFED; stroke: #C6C6C1; stroke-width: 1.2; }
+  .io { fill: #fff; stroke: #C6C6C1; stroke-width: 1.4; }
+  .guard { fill: #FDF3DC; stroke: #F2B530; stroke-width: 1.4; }
+  .guard-in { fill: #F3EBD9; stroke: #F2B530; stroke-width: 1.4; }
+  .hitl { fill: #E3EDF9; stroke: #2F6FD6; stroke-width: 2; }
+  .router { fill: #fff; stroke: #2F6FD6; stroke-width: 1.8; }
+  .tool { fill: #fff; stroke: #9C9C97; stroke-width: 1.2; stroke-dasharray: 5 4; }
+  .mcp { fill: #EAF6EE; stroke: #2E9D5B; stroke-width: 1.4; stroke-dasharray: 5 4; }
+  .flow { stroke: #BDBDB8; stroke-width: 1.6; fill: none; }
+  .link { stroke: #9C9C97; stroke-width: 1.2; fill: none; stroke-dasharray: 3 3; }
+  .loop { stroke: #2F6FD6; stroke-width: 1.6; fill: none; stroke-dasharray: 6 5; }
+  .ckpt { fill: #fff; stroke: #6E6E69; stroke-width: 1.6; }
+  .t-crew { font-size: 17px; font-weight: 600; fill: #1a1a1a; }
+  .t-tag { font-size: 13px; fill: #777; }
+  .t-name { font-size: 15.5px; font-weight: 600; fill: #1a1a1a; text-anchor: middle; }
+  .t-sub { font-size: 13.5px; fill: #555; text-anchor: middle; }
+  .t-uses { font-size: 13.5px; fill: #555; }
+  .t-lbl { font-size: 13px; fill: #555; }
+  .t-blue { font-size: 13px; fill: #2F6FD6; }
+  .t-key { font-size: 14px; fill: #333; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<svg viewBox="0 0 1280 1250" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Alikable chat flow: each user message passes a Python input guardrail that removes secrets and private numbers, then the Chat Agent answers with two task guardrails (an LLM topic check and a Python redaction), a router sends the action to a reply, read-only check jobs, the Change Router, a deploy job or a rollback job; a routed change runs a change job from the routed crew onward, then HITL #3 waits for the user">
+  <defs>
+    <marker id="ag" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#BDBDB8"/>
+    </marker>
+    <marker id="ab" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#2F6FD6"/>
+    </marker>
+    <marker id="at" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#9C9C97"/>
+    </marker>
+    <symbol id="user" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="11.5" fill="#2F6FD6"/>
+      <circle cx="12" cy="9" r="3.6" fill="#fff"/>
+      <path d="M5.6 18.6 C6.6 14.8 9 13.6 12 13.6 C15 13.6 17.4 14.8 18.4 18.6 Z" fill="#fff"/>
+    </symbol>
+  </defs>
+
+  <text class="h1" x="24" y="38">ChatFlow: each message is cleaned, answered by the Chat Agent and turned into one action</text>
+
+  <!-- Flow band -->
+  <rect class="band" x="24" y="58" width="1236" height="44" rx="8"/>
+  <text class="t-uses" x="42" y="85"><tspan style="font-weight:600;fill:#1a1a1a">CrewAI Flows</tspan>  ChatFlow (one kickoff per message) · ChangePipelineFlow (change job) · ChatSession: jobs, waiting gate, chat · memory /chat/&lt;chat_id&gt;</text>
+
+  <!-- User bar -->
+  <rect class="chat" x="24" y="124" width="48" height="976" rx="24"/>
+  <use href="#user" x="36" y="136" width="24" height="24"/>
+  <text class="t-blue" transform="translate(53 640) rotate(-90)" text-anchor="middle" style="font-size:14px"><tspan style="font-weight:600">User</tspan>  ·  the project chat, after HITL #1  ·  one message at a time</text>
+
+  <!-- ================= TOP: guardrails and Chat crew ================= -->
+
+  <!-- Input guardrail (new) -->
+  <rect class="guard" x="140" y="124" width="520" height="64" rx="8"/>
+  <text class="t-name" x="400" y="149">Input guardrail (Python) · new</text>
+  <text class="t-sub" x="400" y="172">secrets + card, SSN, IBAN numbers redacted · warning in the reply</text>
+  <line class="loop" x1="72" y1="156" x2="138" y2="156" marker-end="url(#ab)"/>
+  <text class="t-blue" x="80" y="148">message</text>
+  <line class="flow" x1="400" y1="188" x2="400" y2="218" marker-end="url(#ag)"/>
+  <text class="t-lbl" x="412" y="208">cleaned → history, memory, session.json</text>
+
+  <!-- Chat crew -->
+  <rect class="crew" x="140" y="220" width="520" height="250" rx="10"/>
+  <text class="t-crew" x="160" y="248">Chat crew</text>
+  <text class="t-tag" x="248" y="248">· chat_task · saves to memory</text>
+  <use href="#user" x="628" y="230" width="22" height="22"/>
+
+  <rect class="agent" x="160" y="266" width="230" height="62" rx="8"/>
+  <text class="t-name" x="275" y="291">Chat Agent</text>
+  <text class="t-sub" x="275" y="313">picks one action · ChatReply</text>
+  <line class="flow" x1="410" y1="297" x2="392" y2="297" marker-end="url(#ag)"/>
+  <rect class="io" x="410" y="266" width="230" height="62" rx="8"/>
+  <text class="t-name" x="525" y="291">Inputs</text>
+  <text class="t-sub" x="525" y="313">last 20 lines · spec · jobs · gate</text>
+
+  <rect class="guard-in" x="160" y="346" width="480" height="36" rx="8"/>
+  <text class="t-sub" x="400" y="369" style="fill:#333">Task guardrail 1 (LLM) · new: on topic · front end only</text>
+  <rect class="guard-in" x="160" y="390" width="480" height="36" rx="8"/>
+  <text class="t-sub" x="400" y="413" style="fill:#333">Task guardrail 2 (Python) · new: redacts reply, change, question</text>
+  <text class="t-uses" x="160" y="452">still off topic after 2 retries → a fixed "only this site" reply</text>
+
+  <line class="flow" x1="400" y1="470" x2="400" y2="500" marker-end="url(#ag)"/>
+  <text class="t-lbl" x="412" y="490">approve / reject with no build waiting → reply</text>
+
+  <!-- decide -->
+  <polygon class="router" points="240,537 270,502 530,502 560,537 530,572 270,572"/>
+  <text class="t-name" x="400" y="533">decide</text>
+  <text class="t-sub" x="400" y="555">ChatReply.action</text>
+
+  <!-- ================= RIGHT COLUMN ================= -->
+
+  <rect class="io" x="720" y="124" width="520" height="112" rx="10"/>
+  <text class="t-name" x="980" y="151">Jobs (ChatSession)</text>
+  <text class="t-sub" x="980" y="175">build runner per project: design, change, deploy, rollback, one at a time</text>
+  <text class="t-sub" x="980" y="197">check runner shared by every project: 3 at a time</text>
+  <text class="t-sub" x="980" y="219">results reach the Chat Agent once, with the next message</text>
+  <polyline class="loop" points="720,226 700,226 700,297 662,297" marker-end="url(#ab)"/>
+
+  <rect class="io" x="720" y="256" width="520" height="70" rx="10"/>
+  <text class="t-name" x="980" y="283">Memory /chat/&lt;chat_id&gt;</text>
+  <text class="t-sub" x="980" y="306">the Chat Agent saves · the Change Router and check jobs only recall</text>
+
+  <rect class="guard" x="720" y="346" width="520" height="124" rx="10"/>
+  <text class="t-name" x="980" y="373">What the new chat guardrails block</text>
+  <text class="t-sub" x="980" y="398">secrets · card, SSN and IBAN numbers</text>
+  <text class="t-sub" x="980" y="420">anything not about this site or how it's built</text>
+  <text class="t-sub" x="980" y="442">other frameworks · backend work · "ignore your rules"</text>
+  <text class="t-sub" x="980" y="462" style="fill:#777">not blocked: emails, phones, addresses (often site content)</text>
+
+  <!-- ================= ACTIONS ================= -->
+
+  <line class="flow" x1="400" y1="572" x2="400" y2="600"/>
+  <line class="flow" x1="240" y1="600" x2="1140" y2="600"/>
+  <line class="flow" x1="240" y1="600" x2="240" y2="638" marker-end="url(#ag)"/>
+  <line class="flow" x1="465" y1="600" x2="465" y2="638" marker-end="url(#ag)"/>
+  <line class="flow" x1="690" y1="600" x2="690" y2="638" marker-end="url(#ag)"/>
+  <line class="flow" x1="915" y1="600" x2="915" y2="638" marker-end="url(#ag)"/>
+  <line class="flow" x1="1140" y1="600" x2="1140" y2="638" marker-end="url(#ag)"/>
+  <text class="t-lbl" x="248" y="625">reply</text>
+  <text class="t-lbl" x="473" y="625">check</text>
+  <text class="t-lbl" x="698" y="625">change</text>
+  <text class="t-lbl" x="923" y="625">approve</text>
+  <text class="t-lbl" x="1148" y="625">reject</text>
+
+  <rect class="io" x="140" y="640" width="200" height="90" rx="10"/>
+  <text class="t-name" x="240" y="667">Reply in the chat</text>
+  <text class="t-sub" x="240" y="690">from spec, history</text>
+  <text class="t-sub" x="240" y="710">and job results</text>
+
+  <rect class="io" x="365" y="640" width="200" height="90" rx="10"/>
+  <text class="t-name" x="465" y="667">Check jobs</text>
+  <text class="t-sub" x="465" y="690">read-only reviewers</text>
+  <text class="t-sub" x="465" y="710">recall memory, save none</text>
+
+  <polygon class="router" points="590,685 615,640 765,640 790,685 765,730 615,730"/>
+  <text class="t-name" x="690" y="674">Change Router</text>
+  <text class="t-sub" x="690" y="696">RouteDecision</text>
+  <text class="t-sub" x="690" y="716">recalls memory</text>
+
+  <rect class="io" x="815" y="640" width="200" height="90" rx="10"/>
+  <text class="t-name" x="915" y="667">Deploy job</text>
+  <text class="t-sub" x="915" y="690">clear checkpoint →</text>
+  <text class="t-sub" x="915" y="710">DeployGuideFlow</text>
+
+  <rect class="io" x="1040" y="640" width="200" height="90" rx="10"/>
+  <text class="t-name" x="1140" y="667">Rollback job</text>
+  <text class="t-sub" x="1140" y="690">restore checkpoint</text>
+  <text class="t-sub" x="1140" y="710">none yet → build again</text>
+
+  <!-- clarify + routed -->
+  <polyline class="loop" points="650,730 650,764 74,764" marker-end="url(#ab)"/>
+  <text class="t-blue" x="90" y="756">clarify → one question back to the user</text>
+  <line class="flow" x1="730" y1="730" x2="730" y2="798" marker-end="url(#ag)"/>
+  <text class="t-lbl" x="742" y="770">routed · crew + request restated</text>
+
+  <!-- ================= CHANGE JOB ================= -->
+
+  <rect class="crew" x="140" y="800" width="1100" height="190" rx="10"/>
+  <text class="t-crew" x="160" y="828">Change job</text>
+  <text class="t-tag" x="258" y="828">· ChangePipelineFlow · start_at: the routed crew, then every crew after it</text>
+
+  <rect class="io" x="160" y="870" width="220" height="62" rx="8"/>
+  <text class="t-name" x="270" y="895">Save checkpoint</text>
+  <text class="t-sub" x="270" y="917">unless one is kept</text>
+  <polyline class="loop" points="380,901 392,901 392,852 1121,852"/>
+  <line class="loop" x1="500" y1="852" x2="500" y2="868" marker-end="url(#ab)"/>
+  <line class="loop" x1="707" y1="852" x2="707" y2="868" marker-end="url(#ab)"/>
+  <line class="loop" x1="914" y1="852" x2="914" y2="868" marker-end="url(#ab)"/>
+  <line class="loop" x1="1121" y1="852" x2="1121" y2="868" marker-end="url(#ab)"/>
+
+  <rect class="agent" x="405" y="870" width="190" height="62" rx="8"/>
+  <text class="t-name" x="500" y="895">Planning crew</text>
+  <text class="t-sub" x="500" y="917">new page or feature</text>
+  <line class="flow" x1="595" y1="901" x2="610" y2="901" marker-end="url(#ag)"/>
+  <rect class="agent" x="612" y="870" width="190" height="62" rx="8"/>
+  <text class="t-name" x="707" y="895">Design crew</text>
+  <text class="t-sub" x="707" y="917">style</text>
+  <line class="flow" x1="802" y1="901" x2="817" y2="901" marker-end="url(#ag)"/>
+  <rect class="agent" x="819" y="870" width="190" height="62" rx="8"/>
+  <text class="t-name" x="914" y="895">Implementation crew</text>
+  <text class="t-sub" x="914" y="917">code or behavior</text>
+  <line class="flow" x1="1009" y1="901" x2="1024" y2="901" marker-end="url(#ag)"/>
+  <rect class="agent" x="1026" y="870" width="190" height="62" rx="8"/>
+  <text class="t-name" x="1121" y="895">Polish crew</text>
+  <text class="t-sub" x="1121" y="917">small fix</text>
+
+  <text class="t-uses" x="160" y="966">first build: starts at Implementation, no checkpoint · a new change replaces the build waiting for approval</text>
+  <line class="flow" x1="690" y1="990" x2="690" y2="1022" marker-end="url(#ag)"/>
+  <text class="t-lbl" x="702" y="1011">notes + polish report · build gate opens</text>
+
+  <!-- HITL #3 -->
+  <polygon class="hitl" points="690,1024 830,1062 690,1100 550,1062"/>
+  <text class="t-name" x="690" y="1058">HITL #3</text>
+  <text class="t-sub" x="690" y="1079">approve or reject</text>
+  <polyline class="loop" points="550,1062 74,1062" marker-end="url(#ab)"/>
+  <text class="t-blue" x="90" y="1054">waits for the user: a chat message or the buttons</text>
+
+  <!-- ================= KEY ================= -->
+  <text class="t-key" x="140" y="1150" style="font-weight:600;fill:#555">Key</text>
+  <rect class="guard" x="142" y="1164" width="30" height="18" rx="6"/>
+  <text class="t-key" x="186" y="1178">Guardrail</text>
+  <polygon class="hitl" points="157,1195 172,1205 157,1215 142,1205"/>
+  <text class="t-key" x="186" y="1210">Approval gate (blocks the job)</text>
+
+  <polygon class="router" points="470,1173 476,1164 500,1164 506,1173 500,1182 476,1182"/>
+  <text class="t-key" x="520" y="1178">Router (decision)</text>
+  <line class="loop" x1="470" y1="1205" x2="506" y2="1205"/>
+  <text class="t-key" x="520" y="1210">Loop back / reroute</text>
+
+  <rect class="agent" x="760" y="1164" width="30" height="18" rx="6"/>
+  <text class="t-key" x="804" y="1178">Agent or crew</text>
+  <use href="#user" x="764" y="1194" width="22" height="22"/>
+  <text class="t-key" x="804" y="1210">User touchpoint</text>
+
+  <rect class="io" x="980" y="1164" width="30" height="18" rx="6"/>
+  <text class="t-key" x="1024" y="1178">Python step or job</text>
+</svg>
+</div>
+</body>
+</html>

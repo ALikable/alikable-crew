@@ -1,10 +1,14 @@
 # Deploying Alikable on AWS EC2
 
-Alikable runs on a single EC2 instance, served over plain HTTP at **http://184.197.213.167**
-behind a login. This file describes what changed in the app to make that work, which AWS
-services it uses, what runs on the server, and how to operate it.
+> **Status: torn down on 2026-10-22.** The instance, its disk, the Elastic IP, the security
+> group and the key pair below were all deleted, so the IDs and the IP no longer exist. To
+> deploy again, follow [Redeploying](#redeploying); the app changes and `deploy/` files remain.
 
-The login password and the SSH key are on the laptop that deployed it
+Alikable ran on a single EC2 instance, served over plain HTTP behind a login. This file
+describes what changed in the app to make that work, which AWS services it used, what ran
+on the server, and how to operate it.
+
+The login password and the SSH key were kept on the deploying laptop
 (`~/.ssh/alikable-login.txt` and `~/.ssh/alikable-key.pem`), never in this repo.
 
 ## Changes to the app
@@ -99,6 +103,35 @@ If your IP changes, SSH stops working until the security group rule is updated:
 aws ec2 authorize-security-group-ingress --region us-east-1 --group-id sg-037fe08f7b45e10b8 \
   --protocol tcp --port 22 --cidr "$(curl -s https://checkip.amazonaws.com)/32"
 ```
+
+## Redeploying
+
+The IDs and IP below will be new. Run from the project root, in `us-east-1`:
+
+```bash
+export AWS_REGION=us-east-1
+aws ec2 create-key-pair --key-name alikable-key --key-type ed25519 --query KeyMaterial --output text > ~/.ssh/alikable-key.pem
+chmod 400 ~/.ssh/alikable-key.pem
+VPC=$(aws ec2 describe-vpcs --filters Name=is-default,Values=true --query 'Vpcs[0].VpcId' --output text)
+SG=$(aws ec2 create-security-group --group-name alikable-sg --description "Alikable" --vpc-id $VPC --query GroupId --output text)
+aws ec2 authorize-security-group-ingress --group-id $SG --protocol tcp --port 22 --cidr "$(curl -s https://checkip.amazonaws.com)/32"
+aws ec2 authorize-security-group-ingress --group-id $SG --protocol tcp --port 80 --cidr 0.0.0.0/0
+AMI=$(aws ssm get-parameter --name /aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id --query Parameter.Value --output text)
+IID=$(aws ec2 run-instances --image-id $AMI --instance-type t3.medium --key-name alikable-key --security-group-ids $SG \
+  --block-device-mappings 'DeviceName=/dev/sda1,Ebs={VolumeSize=30,VolumeType=gp3}' --metadata-options HttpTokens=required \
+  --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=alikable}]' --query 'Instances[0].InstanceId' --output text)
+aws ec2 wait instance-running --instance-ids $IID
+ALLOC=$(aws ec2 allocate-address --domain vpc --query AllocationId --output text)
+aws ec2 associate-address --instance-id $IID --allocation-id $ALLOC
+IP=$(aws ec2 describe-addresses --allocation-ids $ALLOC --query 'Addresses[0].PublicIp' --output text)
+
+deploy/push.sh $IP ~/.ssh/alikable-key.pem       # copies the code
+# put a .env on the server (local .env + ALIKABLE_USER / ALIKABLE_PASSWORD), then:
+ssh -i ~/.ssh/alikable-key.pem ubuntu@$IP sudo /opt/alikable-crew/alikable/deploy/setup.sh
+```
+
+Tearing it down again: terminate the instance (deletes its disk), release the Elastic IP,
+then delete the security group and the key pair.
 
 ## Known limits
 

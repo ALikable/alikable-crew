@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Alikable Interview Flow</title>
+<style>
+  body { margin: 0; background: #fff; font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
+  .wrap { max-width: 1300px; margin: 0 auto; padding: 24px 16px; }
+  svg { width: 100%; height: auto; display: block; }
+  .h1 { font-size: 21px; font-weight: 600; fill: #111; }
+  .band { fill: #F4F6FA; stroke: #C9D3E3; stroke-width: 1.2; }
+  .chat { fill: #E3EDF9; stroke: #2F6FD6; stroke-width: 1.6; }
+  .crew { fill: #ECECEA; stroke: #D3D3CF; stroke-width: 1.2; }
+  .agent { fill: #EFEFED; stroke: #C6C6C1; stroke-width: 1.2; }
+  .io { fill: #fff; stroke: #C6C6C1; stroke-width: 1.4; }
+  .guard { fill: #FDF3DC; stroke: #F2B530; stroke-width: 1.4; }
+  .guard-in { fill: #F3EBD9; stroke: #F2B530; stroke-width: 1.4; }
+  .hitl { fill: #E3EDF9; stroke: #2F6FD6; stroke-width: 2; }
+  .router { fill: #fff; stroke: #2F6FD6; stroke-width: 1.8; }
+  .tool { fill: #fff; stroke: #9C9C97; stroke-width: 1.2; stroke-dasharray: 5 4; }
+  .mcp { fill: #EAF6EE; stroke: #2E9D5B; stroke-width: 1.4; stroke-dasharray: 5 4; }
+  .flow { stroke: #BDBDB8; stroke-width: 1.6; fill: none; }
+  .link { stroke: #9C9C97; stroke-width: 1.2; fill: none; stroke-dasharray: 3 3; }
+  .loop { stroke: #2F6FD6; stroke-width: 1.6; fill: none; stroke-dasharray: 6 5; }
+  .ckpt { fill: #fff; stroke: #6E6E69; stroke-width: 1.6; }
+  .t-crew { font-size: 17px; font-weight: 600; fill: #1a1a1a; }
+  .t-tag { font-size: 13px; fill: #777; }
+  .t-name { font-size: 15.5px; font-weight: 600; fill: #1a1a1a; text-anchor: middle; }
+  .t-sub { font-size: 13.5px; fill: #555; text-anchor: middle; }
+  .t-uses { font-size: 13.5px; fill: #555; }
+  .t-lbl { font-size: 13px; fill: #555; }
+  .t-blue { font-size: 13px; fill: #2F6FD6; }
+  .t-key { font-size: 14px; fill: #333; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<svg viewBox="0 0 1280 1070" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Alikable interview flow: the intake form passes a Python input guardrail, the Discovery Interviewer asks up to 4 questions a round for up to 3 rounds, the user&#x27;s answers have secrets redacted and go into the next round, then the form and answers are saved to chat memory and the Planning crew writes the spec">
+  <defs>
+    <marker id="ag" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#BDBDB8"/>
+    </marker>
+    <marker id="ab" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#2F6FD6"/>
+    </marker>
+    <marker id="at" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#9C9C97"/>
+    </marker>
+    <symbol id="user" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="11.5" fill="#2F6FD6"/>
+      <circle cx="12" cy="9" r="3.6" fill="#fff"/>
+      <path d="M5.6 18.6 C6.6 14.8 9 13.6 12 13.6 C15 13.6 17.4 14.8 18.4 18.6 Z" fill="#fff"/>
+    </symbol>
+  </defs>
+
+  <text class="h1" x="24" y="38">IntakeFlow (interview): check the form, ask up to 3 rounds of questions, then hand off to planning</text>
+  <rect class="band" x="24" y="58" width="1236" height="44" rx="8"/>
+  <text class="t-uses" x="42" y="85"><tspan style="font-weight:600;fill:#1a1a1a">CrewAI Flow</tspan>  IntakeFlow · one kickoff per user action · state = IntakeState (kept in session.json) · max 3 rounds · ≤ 4 questions a round</text>
+  <rect class="chat" x="24" y="124" width="48" height="792" rx="24"/>
+  <use href="#user" x="36" y="136" width="24" height="24"/>
+  <text class="t-blue" transform="translate(53 520) rotate(-90)" text-anchor="middle" style="font-size:14px"><tspan style="font-weight:600">User</tspan>  ·  fills the intake form  ·  answers each round&#x27;s questions: pick one, Other, or leave blank</text>
+
+  <!-- Intake form -->
+  <rect class="io" x="200" y="124" width="600" height="64" rx="10"/>
+  <text class="t-name" x="500" y="150">Intake form</text>
+  <text class="t-sub" x="500" y="173">description · audience · look · qualities · API URL + endpoints</text>
+  <line class="loop" x1="72" y1="156" x2="198" y2="156" marker-end="url(#ab)"/>
+  <text class="t-blue" x="82" y="148">submit</text>
+  <line class="flow" x1="500" y1="188" x2="500" y2="218" marker-end="url(#ag)"/>
+  <polygon class="router" points="290,255 320,220 680,220 710,255 680,290 320,290"/>
+  <text class="t-name" x="500" y="251">dispatch</text>
+  <text class="t-sub" x="500" y="273">is this action allowed at this stage?</text>
+  <polyline class="loop" points="290,255 74,255" marker-end="url(#ab)"/>
+  <text class="t-blue" x="82" y="247">refused</text>
+  <line class="flow" x1="500" y1="290" x2="500" y2="318" marker-end="url(#ag)"/>
+  <text class="t-lbl" x="512" y="311.0">form</text>
+
+  <!-- Input guardrail -->
+  <rect class="guard" x="200" y="320" width="600" height="88" rx="8"/>
+  <text class="t-name" x="500" y="347">Input guardrail (Python): check_intake</text>
+  <text class="t-sub" x="500" y="370">description required · ≤ 5,000 characters · HTML/CSS/JS only · no backend work</text>
+  <text class="t-sub" x="500" y="391">API URL starts with http(s):// · endpoints like GET /api/tasks · secrets redacted</text>
+  <polyline class="loop" points="200,364 74,364" marker-end="url(#ab)"/>
+  <text class="t-blue" x="82" y="356">refused</text>
+  <line class="flow" x1="500" y1="408" x2="500" y2="440" marker-end="url(#ag)"/>
+  <text class="t-lbl" x="512" y="431.0">accepted · project folder made · form saved as JSON</text>
+
+  <!-- Interview crew -->
+  <rect class="crew" x="200" y="442" width="600" height="170" rx="10"/>
+  <text class="t-crew" x="220" y="470">Interview crew</text>
+  <text class="t-tag" x="350" y="470">· one round per user action · no memory</text>
+  <use href="#user" x="768" y="452" width="22" height="22"/>
+  <rect class="agent" x="220" y="488" width="270" height="62" rx="8"/>
+  <text class="t-name" x="355" y="513">Discovery Interviewer</text>
+  <text class="t-sub" x="355" y="536">≤ 4 questions, with options</text>
+  <line class="flow" x1="490" y1="519" x2="508" y2="519" marker-end="url(#ag)"/>
+  <rect class="io" x="510" y="488" width="270" height="62" rx="8"/>
+  <text class="t-name" x="645" y="513">Interview</text>
+  <text class="t-sub" x="645" y="536">questions + requirement summary</text>
+  <text class="t-uses" x="220" y="578">uses: knowledge (design practices) · never asks for secrets · front end only</text>
+  <text class="t-uses" x="220" y="600">an unstructured answer counts as done</text>
+  <line class="flow" x1="500" y1="612" x2="500" y2="644" marker-end="url(#ag)"/>
+  <polygon class="router" points="310,681 340,646 660,646 690,681 660,716 340,716"/>
+  <text class="t-name" x="500" y="677">interview_round</text>
+  <text class="t-sub" x="500" y="699">questions left and round &lt; 3?</text>
+
+  <!-- ask loop -->
+  <polyline class="flow" points="690,681 1050,681 1050,632" marker-end="url(#ag)"/>
+  <text class="t-lbl" x="702" y="673">ask · round + 1</text>
+  <rect class="io" x="860" y="560" width="380" height="70" rx="10"/>
+  <text class="t-name" x="1050" y="589">User answers</text>
+  <text class="t-sub" x="1050" y="612">one tab per question · option, Other or blank</text>
+  <use href="#user" x="1208" y="566" width="22" height="22"/>
+  <line class="flow" x1="1050" y1="560" x2="1050" y2="532" marker-end="url(#ag)"/>
+  <rect class="guard-in" x="860" y="442" width="380" height="88" rx="8"/>
+  <text class="t-name" x="1050" y="469">add_answers (Python)</text>
+  <text class="t-sub" x="1050" y="492">adds Q/A lines to the interview</text>
+  <text class="t-sub" x="1050" y="513">blank → sensible default · secrets redacted</text>
+  <polyline class="loop" points="860,486 802,486" marker-end="url(#ab)"/>
+  <text class="t-blue" x="810" y="478">next</text>
+
+  <!-- plan -->
+  <line class="flow" x1="500" y1="716" x2="500" y2="748" marker-end="url(#ag)"/>
+  <text class="t-lbl" x="512" y="739.0">plan · nothing important unclear, or 3 rounds asked</text>
+  <rect class="io" x="200" y="750" width="600" height="64" rx="10"/>
+  <text class="t-name" x="500" y="776">Save to chat memory</text>
+  <text class="t-sub" x="500" y="799">form + answers, once per chat · /chat/&lt;chat_id&gt; · read by the Chat Agent</text>
+  <line class="flow" x1="500" y1="814" x2="500" y2="846" marker-end="url(#ag)"/>
+  <text class="t-lbl" x="512" y="837.0">interview summary</text>
+  <rect class="io" x="200" y="848" width="600" height="70" rx="35"/>
+  <text class="t-name" x="500" y="877">Planning crew writes the spec</text>
+  <text class="t-sub" x="500" y="900">next: the planning diagram · then HITL #1</text>
+
+  <!-- Right column -->
+  <rect class="io" x="860" y="124" width="380" height="130" rx="10"/>
+  <text class="t-name" x="1050" y="161">Each question</text>
+  <text class="t-sub" x="1050" y="184">a short header</text>
+  <text class="t-sub" x="1050" y="205">2 to 4 options, recommended first</text>
+  <text class="t-sub" x="1050" y="226">never one already answered</text>
+  <rect class="io" x="860" y="274" width="380" height="108" rx="10"/>
+  <text class="t-name" x="1050" y="311">Actions (dispatch)</text>
+  <text class="t-sub" x="1050" y="334">form → check_intake</text>
+  <text class="t-sub" x="1050" y="355">answers → add_answers</text>
+  <text class="t-key" x="200" y="966" style="font-weight:600;fill:#555">Key</text>
+  <rect class="guard" x="202" y="980" width="30" height="18" rx="6"/>
+  <text class="t-key" x="246" y="994">Guardrail</text>
+  <rect class="agent" x="202" y="1012" width="30" height="18" rx="6"/>
+  <text class="t-key" x="246" y="1026">Agent</text>
+  <rect class="io" x="202" y="1044" width="30" height="18" rx="6"/>
+  <text class="t-key" x="246" y="1058">Python step, input or output</text>
+  <polygon class="router" points="462,989 468,980 486,980 492,989 486,998 468,998"/>
+  <text class="t-key" x="506" y="994">Router (flow decision)</text>
+  <line class="loop" x1="462" y1="1021" x2="492" y2="1021"/>
+  <text class="t-key" x="506" y="1026">Loop back / user action</text>
+  <use href="#user" x="466" y="1042" width="22" height="22"/>
+  <text class="t-key" x="506" y="1058">User touchpoint</text>
+</svg>
+</div>
+</body>
+</html>

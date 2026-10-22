@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Alikable Design Flow</title>
+<style>
+  body { margin: 0; background: #fff; font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
+  .wrap { max-width: 1300px; margin: 0 auto; padding: 24px 16px; }
+  svg { width: 100%; height: auto; display: block; }
+  .h1 { font-size: 21px; font-weight: 600; fill: #111; }
+  .band { fill: #F4F6FA; stroke: #C9D3E3; stroke-width: 1.2; }
+  .chat { fill: #E3EDF9; stroke: #2F6FD6; stroke-width: 1.6; }
+  .crew { fill: #ECECEA; stroke: #D3D3CF; stroke-width: 1.2; }
+  .agent { fill: #EFEFED; stroke: #C6C6C1; stroke-width: 1.2; }
+  .io { fill: #fff; stroke: #C6C6C1; stroke-width: 1.4; }
+  .guard { fill: #FDF3DC; stroke: #F2B530; stroke-width: 1.4; }
+  .guard-in { fill: #F3EBD9; stroke: #F2B530; stroke-width: 1.4; }
+  .hitl { fill: #E3EDF9; stroke: #2F6FD6; stroke-width: 2; }
+  .router { fill: #fff; stroke: #2F6FD6; stroke-width: 1.8; }
+  .tool { fill: #fff; stroke: #9C9C97; stroke-width: 1.2; stroke-dasharray: 5 4; }
+  .mcp { fill: #EAF6EE; stroke: #2E9D5B; stroke-width: 1.4; stroke-dasharray: 5 4; }
+  .flow { stroke: #BDBDB8; stroke-width: 1.6; fill: none; }
+  .link { stroke: #9C9C97; stroke-width: 1.2; fill: none; stroke-dasharray: 3 3; }
+  .loop { stroke: #2F6FD6; stroke-width: 1.6; fill: none; stroke-dasharray: 6 5; }
+  .ckpt { fill: #fff; stroke: #6E6E69; stroke-width: 1.6; }
+  .t-crew { font-size: 17px; font-weight: 600; fill: #1a1a1a; }
+  .t-tag { font-size: 13px; fill: #777; }
+  .t-name { font-size: 15.5px; font-weight: 600; fill: #1a1a1a; text-anchor: middle; }
+  .t-sub { font-size: 13.5px; fill: #555; text-anchor: middle; }
+  .t-uses { font-size: 13.5px; fill: #555; }
+  .t-lbl { font-size: 13px; fill: #555; }
+  .t-blue { font-size: 13px; fill: #2F6FD6; }
+  .t-key { font-size: 14px; fill: #333; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<svg viewBox="0 0 1280 1070" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Alikable design flow: the Design System Designer and Design Critic loop up to 3 rounds with an LLM task guardrail on the design, the design files are saved, and the user approves at HITL #2 (optionally editing styles.css) or asks for a revision that starts a new design job; approval starts the first build">
+  <defs>
+    <marker id="ag" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#BDBDB8"/>
+    </marker>
+    <marker id="ab" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#2F6FD6"/>
+    </marker>
+    <marker id="at" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#9C9C97"/>
+    </marker>
+    <symbol id="user" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="11.5" fill="#2F6FD6"/>
+      <circle cx="12" cy="9" r="3.6" fill="#fff"/>
+      <path d="M5.6 18.6 C6.6 14.8 9 13.6 12 13.6 C15 13.6 17.4 14.8 18.4 18.6 Z" fill="#fff"/>
+    </symbol>
+  </defs>
+
+  <text class="h1" x="24" y="38">Design: the Design System Designer and Design Critic design the site, then the user approves it at HITL #2</text>
+  <rect class="band" x="24" y="58" width="1236" height="44" rx="8"/>
+  <text class="t-uses" x="42" y="85"><tspan style="font-weight:600;fill:#1a1a1a">Design job</tspan>  ChatSession.start_design · run_review_loop, up to 3 rounds · also the design step of a change job · build runner</text>
+  <rect class="chat" x="24" y="124" width="48" height="750" rx="24"/>
+  <use href="#user" x="36" y="136" width="24" height="24"/>
+  <text class="t-blue" transform="translate(53 499) rotate(-90)" text-anchor="middle" style="font-size:14px"><tspan style="font-weight:600">User</tspan>  ·  previews design/  ·  approves it (styles.css editable) or asks for a revision</text>
+
+  <!-- Input -->
+  <rect class="io" x="200" y="124" width="600" height="64" rx="10"/>
+  <text class="t-name" x="500" y="150">Approved spec</text>
+  <text class="t-sub" x="500" y="173">site_spec.json · + the change asked for (revise, or a style change job)</text>
+  <line class="flow" x1="500" y1="188" x2="500" y2="220" marker-end="url(#ag)"/>
+
+  <!-- Design crew -->
+  <rect class="crew" x="200" y="222" width="600" height="286" rx="10"/>
+  <text class="t-crew" x="220" y="250">Design crew</text>
+  <text class="t-tag" x="324" y="250">· writer / critic pair · up to 3 rounds · GPT-5.6 Luna</text>
+  <use href="#user" x="768" y="232" width="22" height="22"/>
+  <rect class="agent" x="220" y="268" width="270" height="62" rx="8"/>
+  <text class="t-name" x="355" y="293">Design System Designer</text>
+  <text class="t-sub" x="355" y="316">template · styles.css · layouts</text>
+  <line class="flow" x1="490" y1="299" x2="508" y2="299" marker-end="url(#ag)"/>
+  <rect class="agent" x="510" y="268" width="270" height="62" rx="8"/>
+  <text class="t-name" x="645" y="293">Design Critic</text>
+  <text class="t-sub" x="645" y="316">6 checks · APPROVED or fixes</text>
+  <polyline class="loop" points="645,330 645,348 355,348 355,332" marker-end="url(#ab)"/>
+  <text class="t-blue" x="657" y="353">fixes → next round</text>
+  <rect class="guard-in" x="220" y="362" width="560" height="36" rx="8"/>
+  <text class="t-sub" x="500" y="385" style="fill:#333">Task guardrail (LLM): valid CSS, every page has a layout</text>
+  <text class="t-uses" x="220" y="422">uses: knowledge (design templates) · output: DesignSystem</text>
+  <text class="t-uses" x="220" y="444">checks: accent · fonts · theme · pages · look · quality</text>
+  <text class="t-uses" x="220" y="466">every round&#x27;s review → design_review_log.md</text>
+  <line class="flow" x1="500" y1="508" x2="500" y2="540" marker-end="url(#ag)"/>
+  <circle class="ckpt" cx="500" cy="525.0" r="5"/>
+  <text class="t-lbl" x="514" y="532.0">design.json</text>
+  <rect class="io" x="200" y="542" width="600" height="64" rx="10"/>
+  <text class="t-name" x="500" y="568">save_design_files (Python)</text>
+  <text class="t-sub" x="500" y="591">design/: styles.css · components.html · design_notes.md · a layout per page</text>
+  <line class="flow" x1="500" y1="606" x2="500" y2="638" marker-end="url(#ag)"/>
+  <text class="t-lbl" x="512" y="629.0">design gate opens (a change job goes straight on to Implementation)</text>
+
+  <!-- HITL #2 -->
+  <polygon class="hitl" points="500,640 660,678 500,716 340,678"/>
+  <text class="t-name" x="500" y="674">HITL #2</text>
+  <text class="t-sub" x="500" y="695">approve or revise</text>
+  <line class="loop" x1="72" y1="678" x2="338" y2="678" marker-end="url(#ab)"/>
+  <text class="t-blue" x="82" y="670">previews</text>
+  <polyline class="loop" points="660,678 858,678" marker-end="url(#ab)"/>
+  <text class="t-blue" x="672" y="670">revise</text>
+  <rect class="io" x="860" y="634" width="380" height="88" rx="10"/>
+  <text class="t-name" x="1050" y="661">revise_design</text>
+  <text class="t-sub" x="1050" y="684">a new design job</text>
+  <text class="t-sub" x="1050" y="705">with the user&#x27;s change</text>
+  <polyline class="loop" points="1050,634 1050,156 802,156" marker-end="url(#ab)"/>
+  <line class="flow" x1="500" y1="716" x2="500" y2="748" marker-end="url(#ag)"/>
+  <text class="t-lbl" x="512" y="739.0">approve · styles.css may be edited</text>
+  <rect class="io" x="200" y="750" width="600" height="64" rx="10"/>
+  <text class="t-name" x="500" y="776">save_styles (Python)</text>
+  <text class="t-sub" x="500" y="799">a hand edit goes to design/styles.css and design.json (the builders read it)</text>
+  <line class="flow" x1="500" y1="814" x2="500" y2="846" marker-end="url(#ag)"/>
+  <rect class="io" x="200" y="848" width="600" height="70" rx="35"/>
+  <text class="t-name" x="500" y="877">First build job</text>
+  <text class="t-sub" x="500" y="900">Implementation, then Polish · next: the implementation diagram</text>
+  <text class="t-key" x="200" y="966" style="font-weight:600;fill:#555">Key</text>
+  <rect class="guard-in" x="202" y="980" width="30" height="18" rx="6"/>
+  <text class="t-key" x="246" y="994">Guardrail</text>
+  <rect class="agent" x="202" y="1012" width="30" height="18" rx="6"/>
+  <text class="t-key" x="246" y="1026">Agent</text>
+  <rect class="io" x="202" y="1044" width="30" height="18" rx="6"/>
+  <text class="t-key" x="246" y="1058">Python step, input or output</text>
+  <polygon class="hitl" points="477,980 492,990 477,1000 462,990"/>
+  <text class="t-key" x="506" y="994">Approval gate</text>
+  <line class="loop" x1="462" y1="1021" x2="492" y2="1021"/>
+  <text class="t-key" x="506" y="1026">Loop back / user action</text>
+  <circle class="ckpt" cx="477" cy="1053" r="5"/>
+  <text class="t-key" x="506" y="1058">Output saved</text>
+</svg>
+</div>
+</body>
+</html>

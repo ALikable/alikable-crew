@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Alikable Deploy Guide Flow</title>
+<style>
+  body { margin: 0; background: #fff; font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
+  .wrap { max-width: 1300px; margin: 0 auto; padding: 24px 16px; }
+  svg { width: 100%; height: auto; display: block; }
+  .h1 { font-size: 21px; font-weight: 600; fill: #111; }
+  .band { fill: #F4F6FA; stroke: #C9D3E3; stroke-width: 1.2; }
+  .chat { fill: #E3EDF9; stroke: #2F6FD6; stroke-width: 1.6; }
+  .crew { fill: #ECECEA; stroke: #D3D3CF; stroke-width: 1.2; }
+  .agent { fill: #EFEFED; stroke: #C6C6C1; stroke-width: 1.2; }
+  .io { fill: #fff; stroke: #C6C6C1; stroke-width: 1.4; }
+  .guard { fill: #FDF3DC; stroke: #F2B530; stroke-width: 1.4; }
+  .guard-in { fill: #F3EBD9; stroke: #F2B530; stroke-width: 1.4; }
+  .hitl { fill: #E3EDF9; stroke: #2F6FD6; stroke-width: 2; }
+  .router { fill: #fff; stroke: #2F6FD6; stroke-width: 1.8; }
+  .tool { fill: #fff; stroke: #9C9C97; stroke-width: 1.2; stroke-dasharray: 5 4; }
+  .mcp { fill: #EAF6EE; stroke: #2E9D5B; stroke-width: 1.4; stroke-dasharray: 5 4; }
+  .flow { stroke: #BDBDB8; stroke-width: 1.6; fill: none; }
+  .link { stroke: #9C9C97; stroke-width: 1.2; fill: none; stroke-dasharray: 3 3; }
+  .loop { stroke: #2F6FD6; stroke-width: 1.6; fill: none; stroke-dasharray: 6 5; }
+  .ckpt { fill: #fff; stroke: #6E6E69; stroke-width: 1.6; }
+  .t-crew { font-size: 17px; font-weight: 600; fill: #1a1a1a; }
+  .t-tag { font-size: 13px; fill: #777; }
+  .t-name { font-size: 15.5px; font-weight: 600; fill: #1a1a1a; text-anchor: middle; }
+  .t-sub { font-size: 13.5px; fill: #555; text-anchor: middle; }
+  .t-uses { font-size: 13.5px; fill: #555; }
+  .t-lbl { font-size: 13px; fill: #555; }
+  .t-blue { font-size: 13px; fill: #2F6FD6; }
+  .t-key { font-size: 14px; fill: #333; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<svg viewBox="0 0 1280 1310" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Alikable deploy guide flow: after the user approves at HITL #3 with a host and detail level, the deploy job clears the checkpoint, collects the spec, config and polish report, the Release Builder packages and smoke-tests site.zip, the Deploy Guide Writer writes DEPLOY.md, a Python output guardrail checks headings, secrets and file names and sends the guide back for one rewrite, then DEPLOY.md is saved and added to site.zip for the user to download">
+  <defs>
+    <marker id="ag" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#BDBDB8"/>
+    </marker>
+    <marker id="ab" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#2F6FD6"/>
+    </marker>
+    <marker id="at" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#9C9C97"/>
+    </marker>
+    <symbol id="user" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="11.5" fill="#2F6FD6"/>
+      <circle cx="12" cy="9" r="3.6" fill="#fff"/>
+      <path d="M5.6 18.6 C6.6 14.8 9 13.6 12 13.6 C15 13.6 17.4 14.8 18.4 18.6 Z" fill="#fff"/>
+    </symbol>
+  </defs>
+
+  <text class="h1" x="24" y="38">DeployGuideFlow: package the approved site, write DEPLOY.md, check it in Python</text>
+
+  <!-- Flow band -->
+  <rect class="band" x="24" y="58" width="1236" height="44" rx="8"/>
+  <text class="t-uses" x="42" y="85"><tspan style="font-weight:600;fill:#1a1a1a">CrewAI Flow</tspan>  DeployGuideFlow · deploy job after HITL #3 approve · state = DeployGuideState · max_rounds = 2 · never edits site/ · deploys nothing</text>
+
+  <!-- User bar -->
+  <rect class="chat" x="24" y="124" width="48" height="1034" rx="24"/>
+  <use href="#user" x="36" y="136" width="24" height="24"/>
+  <text class="t-blue" transform="translate(53 650) rotate(-90)" text-anchor="middle" style="font-size:14px"><tspan style="font-weight:600">User</tspan>  ·  picks the host + detail at HITL #3  ·  downloads site.zip + DEPLOY.md and deploys it</text>
+
+  <!-- ================= MAIN COLUMN ================= -->
+
+  <!-- HITL #3 -->
+  <polygon class="hitl" points="440,124 600,162 440,200 280,162"/>
+  <text class="t-name" x="440" y="158">HITL #3</text>
+  <text class="t-sub" x="440" y="179">approve · host + detail</text>
+  <line class="loop" x1="72" y1="162" x2="278" y2="162" marker-end="url(#ab)"/>
+  <text class="t-blue" x="84" y="154">approve (chat or button)</text>
+  <line class="flow" x1="440" y1="200" x2="440" y2="232" marker-end="url(#ag)"/>
+  <text class="t-lbl" x="452" y="221">deploy job (build runner)</text>
+
+  <!-- Deploy job -->
+  <rect class="io" x="140" y="234" width="600" height="64" rx="10"/>
+  <text class="t-name" x="440" y="261">Deploy job</text>
+  <text class="t-sub" x="440" y="283">clear_checkpoint: this build is approved · unknown host or detail → error</text>
+  <line class="flow" x1="440" y1="298" x2="440" y2="330" marker-end="url(#ag)"/>
+
+  <!-- collect_inputs -->
+  <rect class="io" x="140" y="332" width="600" height="80" rx="10"/>
+  <text class="t-name" x="440" y="357">collect_inputs</text>
+  <text class="t-sub" x="440" y="379">site_spec.json · js/config.js · polish report summary</text>
+  <text class="t-sub" x="440" y="400">uses_api: API_BASE_URL is set, or the spec has endpoints</text>
+  <line class="flow" x1="440" y1="412" x2="440" y2="444" marker-end="url(#ag)"/>
+
+  <!-- package -->
+  <rect class="tool" x="140" y="446" width="600" height="80" rx="10"/>
+  <text class="t-name" x="440" y="471">package · Release Builder (tool)</text>
+  <text class="t-sub" x="440" y="493">Build Checker → zip site/ → serve on localhost and request every file</text>
+  <text class="t-sub" x="440" y="514">failures don't stop it: they become the guide's Known problems</text>
+  <line class="flow" x1="440" y1="526" x2="440" y2="558" marker-end="url(#ag)"/>
+  <circle class="ckpt" cx="440" cy="542" r="5"/>
+  <text class="t-lbl" x="454" y="549">site.zip · release report (files, ok, problems)</text>
+
+  <!-- Deploy Guide crew -->
+  <rect class="crew" x="140" y="560" width="600" height="190" rx="10"/>
+  <text class="t-crew" x="160" y="588">Deploy Guide crew</text>
+  <text class="t-tag" x="315" y="588">· write_guide · round n of 2</text>
+
+  <rect class="agent" x="160" y="606" width="270" height="62" rx="8"/>
+  <text class="t-name" x="295" y="631">Deploy Guide Writer</text>
+  <text class="t-sub" x="295" y="653">writes DEPLOY.md in Markdown</text>
+  <line class="flow" x1="450" y1="637" x2="432" y2="637" marker-end="url(#ag)"/>
+  <rect class="io" x="450" y="606" width="270" height="62" rx="8"/>
+  <text class="t-name" x="585" y="631">Required headings</text>
+  <text class="t-sub" x="585" y="653">+ the detail rule</text>
+
+  <text class="t-uses" x="160" y="698">uses: deploy_guides.txt (this host's sections) · Release Builder</text>
+  <text class="t-uses" x="160" y="720">release report · config.js · polish summary · last round's feedback</text>
+  <line class="flow" x1="440" y1="750" x2="440" y2="770" marker-end="url(#ag)"/>
+  <text class="t-lbl" x="452" y="764">guide (``` fence stripped)</text>
+
+  <!-- Output guardrail -->
+  <rect class="guard" x="140" y="772" width="600" height="70" rx="8"/>
+  <text class="t-name" x="440" y="797">Output guardrail (Python): validate_guide</text>
+  <text class="t-sub" x="440" y="820">every required heading · no secrets · names only files in the package</text>
+  <line class="flow" x1="440" y1="842" x2="440" y2="872" marker-end="url(#ag)"/>
+
+  <!-- review -->
+  <polygon class="router" points="290,910 320,874 560,874 590,910 560,946 320,946"/>
+  <text class="t-name" x="440" y="906">review</text>
+  <text class="t-sub" x="440" y="928">problems, and round &lt; 2?</text>
+  <polyline class="loop" points="290,910 116,910 116,637 158,637" marker-end="url(#ab)"/>
+  <text class="t-blue" x="124" y="902">rewrite</text>
+  <text class="t-blue" transform="translate(108 774) rotate(-90)" text-anchor="middle">problems + previous guide</text>
+  <line class="flow" x1="440" y1="946" x2="440" y2="978" marker-end="url(#ag)"/>
+  <text class="t-lbl" x="452" y="967">done · problems left are kept in the result</text>
+
+  <!-- save -->
+  <rect class="io" x="140" y="980" width="600" height="64" rx="10"/>
+  <text class="t-name" x="440" y="1007">save</text>
+  <text class="t-sub" x="440" y="1029">DEPLOY.md in the project folder · added to site.zip next to index.html</text>
+  <line class="flow" x1="440" y1="1044" x2="440" y2="1076" marker-end="url(#ag)"/>
+  <circle class="ckpt" cx="440" cy="1060" r="5"/>
+  <text class="t-lbl" x="454" y="1067">DEPLOY.md + site.zip · summary to the chat</text>
+
+  <!-- Output -->
+  <rect class="io" x="140" y="1078" width="600" height="70" rx="35"/>
+  <text class="t-name" x="440" y="1106">User downloads site.zip + DEPLOY.md</text>
+  <text class="t-sub" x="440" y="1129">deploys it by hand · fixes go through the chat as a change</text>
+  <use href="#user" x="700" y="1084" width="22" height="22"/>
+
+  <!-- ================= RIGHT COLUMN ================= -->
+
+  <rect class="io" x="820" y="124" width="420" height="110" rx="10"/>
+  <text class="t-name" x="1030" y="151">Hosts</text>
+  <text class="t-sub" x="1030" y="176">Netlify · Vercel · GitHub Pages</text>
+  <text class="t-sub" x="1030" y="198">AWS S3 static website hosting</text>
+  <text class="t-sub" x="1030" y="220">picks which deploy_guides.txt sections load</text>
+  <polyline class="link" points="820,162 602,162" marker-end="url(#at)"/>
+
+  <rect class="io" x="820" y="300" width="420" height="132" rx="10"/>
+  <text class="t-name" x="1030" y="327">Detail</text>
+  <text class="t-sub" x="1030" y="352">quick: 2-minute read, ≤ 8 steps</text>
+  <text class="t-sub" x="1030" y="374">standard: steps + what you should see</text>
+  <text class="t-sub" x="1030" y="396">detailed: why each step matters,</text>
+  <text class="t-sub" x="1030" y="416">custom domain, browser console</text>
+  <polyline class="link" points="820,366 790,366 790,652 722,652" marker-end="url(#at)"/>
+
+  <rect class="io" x="820" y="560" width="420" height="200" rx="10"/>
+  <text class="t-name" x="1030" y="587">Required headings (## )</text>
+  <text class="t-sub" x="1030" y="612">What you are deploying</text>
+  <text class="t-sub" x="1030" y="634">Known problems (only if the release failed)</text>
+  <text class="t-sub" x="1030" y="656">Before you deploy</text>
+  <text class="t-sub" x="1030" y="678">Deploy to &lt;host&gt;</text>
+  <text class="t-sub" x="1030" y="700">Connect your API (only if uses_api)</text>
+  <text class="t-sub" x="1030" y="722">Update the site later</text>
+  <text class="t-sub" x="1030" y="744">Troubleshooting</text>
+  <polyline class="link" points="820,622 722,622" marker-end="url(#at)"/>
+  <polyline class="link" points="1030,760 1030,807 742,807" marker-end="url(#at)"/>
+
+  <!-- ================= KEY ================= -->
+  <text class="t-key" x="140" y="1196" style="font-weight:600;fill:#555">Key</text>
+  <rect class="guard" x="142" y="1210" width="30" height="18" rx="6"/>
+  <text class="t-key" x="186" y="1224">Guardrail</text>
+  <polygon class="hitl" points="157,1241 172,1251 157,1261 142,1251"/>
+  <text class="t-key" x="186" y="1256">Approval gate</text>
+
+  <polygon class="router" points="420,1219 426,1210 450,1210 456,1219 450,1228 426,1228"/>
+  <text class="t-key" x="470" y="1224">Router (flow decision)</text>
+  <line class="loop" x1="420" y1="1251" x2="456" y2="1251"/>
+  <text class="t-key" x="470" y="1256">Loop back / user action</text>
+
+  <rect class="agent" x="720" y="1210" width="30" height="18" rx="6"/>
+  <text class="t-key" x="764" y="1224">Agent</text>
+  <rect class="tool" x="720" y="1242" width="30" height="18" rx="6"/>
+  <text class="t-key" x="764" y="1256">Tool</text>
+
+  <rect class="io" x="940" y="1210" width="30" height="18" rx="6"/>
+  <text class="t-key" x="984" y="1224">Python step, input or output</text>
+  <circle class="ckpt" cx="955" cy="1251" r="5"/>
+  <text class="t-key" x="984" y="1256">Output saved</text>
+  <use href="#user" x="942" y="1270" width="22" height="22"/>
+  <text class="t-key" x="984" y="1286">User touchpoint</text>
+</svg>
+</div>
+</body>
+</html>

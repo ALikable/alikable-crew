@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Alikable Polish Flow</title>
+<style>
+  body { margin: 0; background: #fff; font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
+  .wrap { max-width: 1300px; margin: 0 auto; padding: 24px 16px; }
+  svg { width: 100%; height: auto; display: block; }
+  .h1 { font-size: 21px; font-weight: 600; fill: #111; }
+  .band { fill: #F4F6FA; stroke: #C9D3E3; stroke-width: 1.2; }
+  .chat { fill: #E3EDF9; stroke: #2F6FD6; stroke-width: 1.6; }
+  .crew { fill: #ECECEA; stroke: #D3D3CF; stroke-width: 1.2; }
+  .agent { fill: #EFEFED; stroke: #C6C6C1; stroke-width: 1.2; }
+  .io { fill: #fff; stroke: #C6C6C1; stroke-width: 1.4; }
+  .guard { fill: #FDF3DC; stroke: #F2B530; stroke-width: 1.4; }
+  .guard-in { fill: #F3EBD9; stroke: #F2B530; stroke-width: 1.4; }
+  .hitl { fill: #E3EDF9; stroke: #2F6FD6; stroke-width: 2; }
+  .router { fill: #fff; stroke: #2F6FD6; stroke-width: 1.8; }
+  .tool { fill: #fff; stroke: #9C9C97; stroke-width: 1.2; stroke-dasharray: 5 4; }
+  .mcp { fill: #EAF6EE; stroke: #2E9D5B; stroke-width: 1.4; stroke-dasharray: 5 4; }
+  .flow { stroke: #BDBDB8; stroke-width: 1.6; fill: none; }
+  .link { stroke: #9C9C97; stroke-width: 1.2; fill: none; stroke-dasharray: 3 3; }
+  .loop { stroke: #2F6FD6; stroke-width: 1.6; fill: none; stroke-dasharray: 6 5; }
+  .ckpt { fill: #fff; stroke: #6E6E69; stroke-width: 1.6; }
+  .t-crew { font-size: 17px; font-weight: 600; fill: #1a1a1a; }
+  .t-tag { font-size: 13px; fill: #777; }
+  .t-name { font-size: 15.5px; font-weight: 600; fill: #1a1a1a; text-anchor: middle; }
+  .t-sub { font-size: 13.5px; fill: #555; text-anchor: middle; }
+  .t-uses { font-size: 13.5px; fill: #555; }
+  .t-lbl { font-size: 13px; fill: #555; }
+  .t-blue { font-size: 13px; fill: #2F6FD6; }
+  .t-key { font-size: 14px; fill: #333; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<svg viewBox="0 0 1280 1300" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Alikable polish flow: the QA Tester and Consistency Auditor check the site at the same time, a router decides whether to fix, the Fixer handles one issue at a time with each fix written inside site/ and rolled back if the Build Checker finds new errors, then the flow checks again, and finally writes polish_report.json and returns to the change job for HITL #3">
+  <defs>
+    <marker id="ag" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#BDBDB8"/>
+    </marker>
+    <marker id="ab" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#2F6FD6"/>
+    </marker>
+    <marker id="at" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#9C9C97"/>
+    </marker>
+  </defs>
+
+  <text class="h1" x="24" y="38">PolishFlow: check the build, fix one issue at a time, check again, then report</text>
+
+  <!-- Flow band -->
+  <rect class="band" x="24" y="58" width="1236" height="44" rx="8"/>
+  <text class="t-uses" x="42" y="85"><tspan style="font-weight:600;fill:#1a1a1a">CrewAI Flow</tspan>  PolishFlow · run at the end of every change job (ChangePipelineFlow) · state = PolishState · max_rounds = 1 · works on site/</text>
+
+  <!-- ================= MAIN COLUMN ================= -->
+
+  <!-- Input -->
+  <rect class="io" x="300" y="124" width="600" height="64" rx="10"/>
+  <text class="t-name" x="600" y="151">Change job starts polish</text>
+  <text class="t-sub" x="600" y="173">site spec · design · change_request (only when routed to polish) · max_rounds</text>
+  <line class="flow" x1="600" y1="188" x2="600" y2="206" marker-end="url(#ag)"/>
+
+  <!-- load_build -->
+  <rect class="io" x="300" y="208" width="600" height="54" rx="8"/>
+  <text class="t-name" x="600" y="231">load_build</text>
+  <text class="t-sub" x="600" y="252">site/ must have an .html page, or the job fails</text>
+  <line class="flow" x1="600" y1="262" x2="600" y2="294" marker-end="url(#ag)"/>
+  <text class="t-lbl" x="612" y="283">site/ has pages</text>
+
+  <!-- check -->
+  <rect class="crew" x="300" y="296" width="600" height="174" rx="10"/>
+  <text class="t-crew" x="320" y="324">check</text>
+  <text class="t-tag" x="372" y="324">· QA crew + audit crew at the same time · last round only reports</text>
+
+  <rect class="agent" x="320" y="342" width="270" height="62" rx="8"/>
+  <text class="t-name" x="455" y="367">QA Tester</text>
+  <text class="t-sub" x="455" y="389">bugs · steps · severity</text>
+  <rect class="agent" x="610" y="342" width="270" height="62" rx="8"/>
+  <text class="t-name" x="745" y="367">Consistency Auditor</text>
+  <text class="t-sub" x="745" y="389">drift from spec + design</text>
+
+  <text class="t-uses" x="320" y="432">uses: Build Checker (QA Tester) · every site/ file · no browser</text>
+  <text class="t-uses" x="320" y="454">bugs + suggestions · an unstructured answer counts as nothing found</text>
+  <line class="flow" x1="600" y1="470" x2="600" y2="498" marker-end="url(#ag)"/>
+
+  <!-- decide -->
+  <polygon class="router" points="400,535 430,500 770,500 800,535 770,570 430,570"/>
+  <text class="t-name" x="600" y="531">decide</text>
+  <text class="t-sub" x="600" y="553">something to fix (or a user change) and rounds left?</text>
+  <line class="flow" x1="600" y1="570" x2="600" y2="602" marker-end="url(#ag)"/>
+  <text class="t-lbl" x="612" y="591">fix</text>
+
+  <!-- fix_issues -->
+  <rect class="crew" x="300" y="604" width="600" height="356" rx="10"/>
+  <text class="t-crew" x="320" y="632">fix_issues</text>
+  <text class="t-tag" x="410" y="632">· round + 1 · one Fixer crew call per issue</text>
+
+  <rect class="io" x="320" y="650" width="560" height="54" rx="8"/>
+  <text class="t-name" x="600" y="673">Order the work</text>
+  <text class="t-sub" x="600" y="694">the user's change first · then bugs + suggestions, high → medium → low</text>
+  <line class="flow" x1="455" y1="704" x2="455" y2="722" marker-end="url(#ag)"/>
+
+  <rect class="agent" x="320" y="724" width="270" height="62" rx="8"/>
+  <text class="t-name" x="455" y="749">Fixer</text>
+  <text class="t-sub" x="455" y="771">one issue · FixResult with files</text>
+  <line class="flow" x1="590" y1="755" x2="608" y2="755" marker-end="url(#ag)"/>
+  <rect class="io" x="610" y="724" width="270" height="62" rx="8"/>
+  <text class="t-name" x="745" y="749">apply_changes (Python)</text>
+  <text class="t-sub" x="745" y="771">back up old files, then write</text>
+
+  <rect class="guard-in" x="320" y="804" width="560" height="36" rx="8"/>
+  <text class="t-sub" x="600" y="827" style="fill:#333">File guardrail (Python): every path must be inside site/, or nothing is written</text>
+  <line class="flow" x1="600" y1="840" x2="600" y2="856" marker-end="url(#ag)"/>
+
+  <rect class="io" x="320" y="858" width="560" height="62" rx="8"/>
+  <text class="t-name" x="600" y="883">Build Checker after the fix</text>
+  <text class="t-sub" x="600" y="905">new errors → restore the backup (reverted) · none → fixed</text>
+
+  <text class="t-uses" x="320" y="946">skipped or failed fixes are recorded, nothing written · then the next issue</text>
+
+  <!-- recheck loop -->
+  <polyline class="loop" points="300,889 262,889 262,394 298,394" marker-end="url(#ab)"/>
+  <text class="t-blue" transform="translate(252 640) rotate(-90)" text-anchor="middle">recheck · every issue tried</text>
+
+  <!-- done path -->
+  <polyline class="flow" points="800,535 930,535 930,1022 902,1022" marker-end="url(#ag)"/>
+  <text class="t-lbl" x="812" y="527">done</text>
+  <text class="t-lbl" transform="translate(944 780) rotate(-90)" text-anchor="middle">nothing found, or no rounds left</text>
+
+  <!-- finish -->
+  <rect class="io" x="300" y="990" width="600" height="64" rx="10"/>
+  <text class="t-name" x="600" y="1017">finish</text>
+  <text class="t-sub" x="600" y="1039">Build Checker once more · fixes made · bugs + suggestions still open</text>
+  <line class="flow" x1="600" y1="1054" x2="600" y2="1086" marker-end="url(#ag)"/>
+  <circle class="ckpt" cx="600" cy="1070" r="5"/>
+  <text class="t-lbl" x="614" y="1077">polish_report.json</text>
+
+  <!-- Output -->
+  <rect class="io" x="300" y="1088" width="600" height="70" rx="35"/>
+  <text class="t-name" x="600" y="1116">Back to the change job, then HITL #3</text>
+  <text class="t-sub" x="600" y="1139">report summary goes to the chat · the user approves or rejects</text>
+
+  <!-- ================= RIGHT COLUMN ================= -->
+
+  <rect class="io" x="980" y="124" width="260" height="140" rx="10"/>
+  <text class="t-name" x="1110" y="151">When polish runs</text>
+  <text class="t-sub" x="1110" y="176">routed here (small fix):</text>
+  <text class="t-sub" x="1110" y="196">the user's change is fixed first</text>
+  <text class="t-sub" x="1110" y="222">after Implementation, or</text>
+  <text class="t-sub" x="1110" y="242">the first build: checks only</text>
+
+  <rect class="tool" x="980" y="760" width="260" height="140" rx="10"/>
+  <text class="t-name" x="1110" y="787">Build Checker (tool)</text>
+  <text class="t-sub" x="1110" y="812">local links + assets exist</text>
+  <text class="t-sub" x="1110" y="834">CDNs on the allowlist</text>
+  <text class="t-sub" x="1110" y="856">valid JSON · no secrets</text>
+  <text class="t-sub" x="1110" y="878">no browser, so no runtime errors</text>
+  <polyline class="link" points="980,889 882,889" marker-end="url(#at)"/>
+  <polyline class="link" points="1110,900 1110,1022 902,1022" marker-end="url(#at)"/>
+
+  <!-- ================= KEY ================= -->
+  <text class="t-key" x="300" y="1200" style="font-weight:600;fill:#555">Key</text>
+  <rect class="agent" x="302" y="1214" width="30" height="18" rx="6"/>
+  <text class="t-key" x="346" y="1228">Agent</text>
+  <rect class="guard-in" x="302" y="1246" width="30" height="18" rx="6"/>
+  <text class="t-key" x="346" y="1260">Guardrail</text>
+
+  <polygon class="router" points="560,1223 566,1214 590,1214 596,1223 590,1232 566,1232"/>
+  <text class="t-key" x="610" y="1228">Router (flow decision)</text>
+  <line class="loop" x1="560" y1="1255" x2="596" y2="1255"/>
+  <text class="t-key" x="610" y="1260">Loop back</text>
+
+  <rect class="io" x="820" y="1214" width="30" height="18" rx="6"/>
+  <text class="t-key" x="864" y="1228">Python step, input or output</text>
+  <rect class="tool" x="820" y="1246" width="30" height="18" rx="6"/>
+  <text class="t-key" x="864" y="1260">Tool</text>
+  <circle class="ckpt" cx="835" cy="1287" r="5"/>
+  <text class="t-key" x="864" y="1292">Output saved</text>
+</svg>
+</div>
+</body>
+</html>
