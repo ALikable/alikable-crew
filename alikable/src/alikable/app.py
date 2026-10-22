@@ -6,7 +6,7 @@ together. Each screen draws itself (ui/*.py); this file decides which one shows.
         └--select a project--> the screen for its stage (ui/navigation.screen_for)
 
 The build screen has the chat, the build gate and the deploy files on the left, and
-the jobs and the site's pages, to open in a new tab, on the right.
+the jobs and the site's pages, to open in the browser, on the right.
 
 The open project's chat_id is kept in the browser, so reloading the page reopens it.
 While the design or build screen shows, a timer polls the project every 2 seconds and

@@ -1,2 +1,0 @@
-crewai[tools]==1.15.28
-python-dotenv
