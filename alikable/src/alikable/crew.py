@@ -10,6 +10,8 @@ from alikable.models import AuditReport, ChatReply, DesignSystem, FixResult, Int
 from alikable.projects import Project
 from alikable.tools.build_checker import BuildCheckerTool
 from alikable.tools.release_builder import ReleaseBuilderTool
+from crewai.mcp import MCPServerStdio
+from crewai.mcp.filters import create_static_tool_filter
 # ------------------------------------------------------------------ Memory
 # Only the chat side remembers. Every other crew works from its inputs alone, so
 # reviews and rework stay independent. One Memory backs every chat; each chat is
@@ -121,11 +123,20 @@ class Alikable():
             llm="openai/gpt-5.6-luna",
             verbose=True
         )
+    
     @agent
     def code_reviewer(self) -> Agent:
         return Agent(
             config=self.agents_config['code_reviewer'], # type: ignore[index]
             tools=[BuildCheckerTool(site_dir=self.project.site_dir)],
+            mcps=[MCPServerStdio(
+                command="npx",
+                args=["-y", "@modelcontextprotocol/server-filesystem",
+                      str(self.project.site_dir.resolve())],
+                tool_filter=create_static_tool_filter(
+                    allowed_tool_names=["list_directory", "read_text_file"]
+                ),
+            )],
             llm="openai/gpt-5.6-luna",
             verbose=True
         )

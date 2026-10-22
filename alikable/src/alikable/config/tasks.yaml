@@ -231,11 +231,16 @@ code_review_task:
        that need login redirect when there is no token (and on a 401 only if the
        spec has a real API).
     Only these 5 checks decide approval. Do not judge anything else.
+    A FAIL must quote the words of the check that are broken; if no words of a
+    check are broken, that check is a PASS.
     If index.html is not a page in the spec, it is a small redirect page added by
     the system: skip checks 3 to 5 for it.
     styles.css is the approved design and cannot be changed: every fix must be
     in the pages or their scripts, using classes that already exist in styles.css.
-
+    You can also list and open the site's files with your file tools: use them to
+    double-check a file before you mark a check FAIL. Write paths as shown in the
+    site files, like js/api.js, without a leading slash; use . for the whole site.
+    
     Site spec: {site_spec}
 
     Site files: {site_files}
